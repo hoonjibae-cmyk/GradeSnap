@@ -57,6 +57,7 @@
 | 도구 | 용도 |
 |---|---|
 | [`tools/pdf_probe.py`](tools/pdf_probe.py) | 시험지 PDF가 자동 등록 가능한지 진단. 정답지를 주면 정답 추출까지 시도 |
+| [`tools/pdf_diff_key.py`](tools/pdf_diff_key.py) | 레이아웃이 같은 시험지·정답지를 차분해 정답과 좌표를 동시 추출 |
 
 ## 현재 상태
 
