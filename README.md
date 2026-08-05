@@ -50,6 +50,13 @@
 | [07. 개발 로드맵](docs/07-roadmap.md) | 단계별 범위, 일정, 리스크 |
 | [08. 샘플 분석](docs/08-sample-analysis.md) | 실제 학생 답안지 약 55장 분석, 설계 변경 사항 |
 | [09. 생성기 연동 설계](docs/09-yunique-voca-integration.md) | 유니크보카 생성기 분석, examSpec 연동 방식 |
+| [10. PDF 자동 추출 실험](docs/10-pdf-extraction-findings.md) | 실제 시험지·정답지 4세트 검증 결과 |
+
+## 도구
+
+| 도구 | 용도 |
+|---|---|
+| [`tools/pdf_probe.py`](tools/pdf_probe.py) | 시험지 PDF가 자동 등록 가능한지 진단. 정답지를 주면 정답 추출까지 시도 |
 
 ## 현재 상태
 
