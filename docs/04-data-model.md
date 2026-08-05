@@ -70,6 +70,8 @@ answer_region(
   kind,                    -- mark | handwriting
   bbox,                    -- jsonb: {"x":0.12,"y":0.34,"w":0.20,"h":0.03}  (0~1 정규화)
   label,                   -- 'blank_1', 'choice_유', 'choice_반'
+  prefix,                  -- 인쇄된 첫 글자 ('g' in "g̲uard") — 없으면 null
+  multiline    default false,  -- 답안이 여러 줄로 넘칠 수 있는 영역
   sort_order
 )
 
@@ -205,13 +207,35 @@ B유형(본문 빈칸) 문항 예시 — 한 문항에 빈칸 여러 개:
 }
 ```
 
-C유형(문장 영작) 채점 기준:
+단어시험 "한글 뜻 → 영단어" 문항 — **인쇄된 첫 글자가 칸 안에 있는 경우**:
+
+```json
+{
+  "number": "28", "type": "short_answer", "points": 1,
+  "regions": [
+    { "label": "answer", "kind": "handwriting",
+      "prefix": "g",
+      "bbox": {"x":0.62,"y":0.21,"w":0.28,"h":0.024} }
+  ],
+  "key": {
+    "canonical": "guard",
+    "match_options": { "ignore_case": true, "allow_typo_distance": 0 }
+  }
+}
+```
+
+`prefix`가 있으면 crop 안에 활자와 손글씨가 섞여 있다는 뜻입니다.
+인식 결과를 `prefix + 손글씨`로 조립해 `canonical`과 비교합니다.
+**첫 글자가 확정되어 있어 오히려 인식 정확도가 올라가는 케이스입니다.**
+
+C유형(문장 영작) 채점 기준 — **`multiline` 주의**:
 
 ```json
 {
   "number": "4", "type": "sentence", "points": 2,
   "regions": [
-    { "label": "sentence", "kind": "handwriting", "bbox": {"x":0.10,"y":0.44,"w":0.82,"h":0.05} }
+    { "label": "sentence", "kind": "handwriting", "multiline": true,
+      "bbox": {"x":0.10,"y":0.44,"w":0.82,"h":0.11} }
   ],
   "key": {
     "canonical": "This book is about King Sejong, who invented Hangeul.",
@@ -228,6 +252,10 @@ C유형(문장 영작) 채점 기준:
   }
 }
 ```
+
+문장형 영역의 `bbox`는 **인쇄된 답안선 1줄이 아니라 다음 문항 번호 직전까지의 블록 전체**로
+잡습니다. 실제 답안지에서 긴 영작은 2~3줄로 넘치며, 줄 수가 학생마다 다릅니다.
+문장형은 어차피 VLM이 이미지 전체를 읽으므로 넉넉한 영역이 안전합니다.
 
 ## 4. 인덱스·제약
 

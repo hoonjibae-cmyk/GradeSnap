@@ -1,0 +1,27 @@
+# 학생 답안지 샘플 — 실명·필체 등 개인정보 포함, 절대 커밋 금지
+samples/
+*.jpeg
+*.jpg
+*.png
+!docs/assets/*.png
+
+# 환경 변수
+.env
+.env.*
+!.env.example
+
+# 의존성 / 빌드
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 도구
+.DS_Store
+.idea/
+.vscode/
+*.log
