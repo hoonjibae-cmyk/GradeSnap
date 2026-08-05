@@ -32,3 +32,8 @@ tools/out/
 
 # 진단 산출물
 tools/out_*.json
+
+# 인식 벤치마크 산출물 — 매니페스트에 학생 실명과 손글씨 전사가 들어갑니다
+crops/
+manifest*.csv
+bench_results*.json

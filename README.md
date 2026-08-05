@@ -51,6 +51,7 @@
 | [08. 샘플 분석](docs/08-sample-analysis.md) | 실제 학생 답안지 약 55장 분석, 설계 변경 사항 |
 | [09. 생성기 연동 설계](docs/09-yunique-voca-integration.md) | 유니크보카 생성기 분석, examSpec 연동 방식 |
 | [10. PDF 자동 추출 실험](docs/10-pdf-extraction-findings.md) | 실제 시험지·정답지 4세트 검증 결과 |
+| [11. 인식 벤치마크 실행 절차](docs/11-recognition-benchmark.md) | Phase 0 관문 — 무엇을 재고, 어떻게 돌리고, 결과를 어떻게 읽는가 |
 
 ## 도구
 
@@ -61,13 +62,20 @@
 | [`tools/extract_hidden.py`](tools/extract_hidden.py) | 시험지에 흰색으로 숨겨진 정답을 추출 (문법 백지 TEST) |
 | [`tools/audit_combined.py`](tools/audit_combined.py) | 세트 전수 진단 — 두 추출 방법을 모두 시도해 유닛별 판정 |
 | [`tools/build_templates.py`](tools/build_templates.py) | 세트 → `exam_template` JSON 일괄 생성 |
+| [`tools/make_crops.py`](tools/make_crops.py) | 템플릿 좌표로 답안지를 문항별로 잘라 벤치마크 입력 생성 |
+| [`tools/fill_truth.py`](tools/fill_truth.py) | 선생님 채점 결과(오답 번호)로 벤치마크 라벨을 자동 기입 |
+| [`tools/bench_ocr.py`](tools/bench_ocr.py) | 인식 벤치마크 — 방식별·필체 등급별 정확도/오인식률/관대함 측정 |
 
 ## 현재 상태
 
 기획 단계입니다. 코드는 아직 없습니다.
 
 **Phase 0 진행 중** — 실제 답안지 약 55장 분석 완료([08](docs/08-sample-analysis.md)),
-유니크보카 생성기 분석 완료([09](docs/09-yunique-voca-integration.md)).
+유니크보카 생성기 분석 완료([09](docs/09-yunique-voca-integration.md)),
+**인식 벤치마크 도구 준비 완료**([11](docs/11-recognition-benchmark.md)).
+
+> 벤치마크는 Phase 1 착수 여부를 결정하는 관문입니다. 도구는 다 만들었고
+> **막힌 것은 정답 라벨(선생님 채점 결과)뿐입니다.** → [11 §11.5](docs/11-recognition-benchmark.md)
 
 시험지는 만들어지는 방식이 세 가지이고, **등록·운영 비용이 각각 다릅니다.**
 ([04 §2.5](docs/04-data-model.md#25-시험지-3분류--등록운영-비용이-다릅니다))
