@@ -60,6 +60,7 @@
 | [`tools/pdf_diff_key.py`](tools/pdf_diff_key.py) | 레이아웃이 같은 시험지·정답지를 차분해 정답과 좌표를 동시 추출 |
 | [`tools/extract_hidden.py`](tools/extract_hidden.py) | 시험지에 흰색으로 숨겨진 정답을 추출 (문법 백지 TEST) |
 | [`tools/audit_combined.py`](tools/audit_combined.py) | 세트 전수 진단 — 두 추출 방법을 모두 시도해 유닛별 판정 |
+| [`tools/build_templates.py`](tools/build_templates.py) | 세트 → `exam_template` JSON 일괄 생성 |
 
 ## 현재 상태
 
