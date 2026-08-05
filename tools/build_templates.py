@@ -38,8 +38,9 @@ def build(exam_path, key_path, level, ch, title):
         "source_pdf": os.path.basename(exam_path),
         "extraction": {"method": method,
                        "hidden_count": len(hidden), "diff_count": len(diff)},
-        "pass_rule": {"type": "max_wrong", "value": None,
-                      "note": "시험지에 인쇄된 '커트 라인 -N칸' 값을 입력하세요"},
+        # 컷트라인은 템플릿에 고정하지 않는다. 시험지에 인쇄된 값은 기본값일 뿐이고,
+        # 실제로는 반 수준에 따라 시행 시점(exam.pass_rule)에 정한다.
+        "pass_rule": None,
         "pages": [{"page_no": i, "width_pt": round(p.rect.width, 1),
                    "height_pt": round(p.rect.height, 1)} for i, p in enumerate(doc, 1)],
         "questions": [

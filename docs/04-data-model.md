@@ -40,7 +40,7 @@ exam_template(
   page_count,
   source_pdf_url,
   printable_pdf_url,       -- QR·마커 삽입본
-  pass_rule,               -- jsonb: {"type":"max_wrong","value":3}
+  pass_rule,               -- jsonb: {"type":"max_wrong","value":3} — 기본값
   auto_confirm_threshold,  -- 기본 0.9
   status                   -- draft | ready | archived
 )
@@ -249,6 +249,14 @@ COALESCE(
   (SELECT ... FROM answer_key WHERE question_id = ? AND exam_id IS NULL)
 )
 ```
+**컷트라인도 같은 구조입니다.** `exam.pass_rule`이 있으면 그것을, 없으면
+`exam_template.pass_rule`을 씁니다.
+
+같은 시험지를 여러 반이 다른 기준으로 보는 일이 실제로 있기 때문입니다.
+문법 백지 TEST에 `커트 라인 -12칸`이 인쇄되어 있지만 그건 **기본값일 뿐**이고,
+반 수준에 따라 선생님이 시행 시점에 조정합니다.
+**등록 단계에서 확정할 값이 아닙니다.**
+
 ③은 매회 새 템플릿이므로 실질적으로 `exam_id IS NULL` 경로만 씁니다.
 `exam_id`는 향후 **같은 시험지를 여러 반이 다른 정답 기준으로 채점**하는 경우
 (부분점수 기준을 반별로 다르게 두는 등)를 위해 남겨둡니다.
@@ -259,6 +267,7 @@ COALESCE(
 exam(
   id, template_id, class_id, teacher_id,
   name, exam_date,
+  pass_rule,               -- jsonb, NULL이면 템플릿 기본값 사용
   status                   -- open | grading | closed
 )
 
