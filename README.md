@@ -58,6 +58,8 @@
 |---|---|
 | [`tools/pdf_probe.py`](tools/pdf_probe.py) | 시험지 PDF가 자동 등록 가능한지 진단. 정답지를 주면 정답 추출까지 시도 |
 | [`tools/pdf_diff_key.py`](tools/pdf_diff_key.py) | 레이아웃이 같은 시험지·정답지를 차분해 정답과 좌표를 동시 추출 |
+| [`tools/extract_hidden.py`](tools/extract_hidden.py) | 시험지에 흰색으로 숨겨진 정답을 추출 (문법 백지 TEST) |
+| [`tools/audit_combined.py`](tools/audit_combined.py) | 세트 전수 진단 — 두 추출 방법을 모두 시도해 유닛별 판정 |
 
 ## 현재 상태
 
@@ -72,7 +74,7 @@
 | 분류 | 예시 | 매회 작업 |
 |---|---|---|
 | ① 생성기 출력 | 유니크보카 | 없음 (examSpec 자동 수신) |
-| ② 고정 세트 | 문법 백지 TEST | 없음 (유닛당 1회 등록) |
+| ② 고정 세트 | 문법 백지 TEST | 없음 (전체 58유닛 등록에 **3.4시간**, [10 §10.6](docs/10-pdf-extraction-findings.md)) |
 | ③ **매회 신규** | 영작클리닉, Day08-10 단어시험 | **매회 전체 등록** |
 
 ③은 선생님이 매회 시험지를 새로 만들고 공유되는 건 상단 헤더 표뿐입니다.

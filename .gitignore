@@ -29,3 +29,6 @@ venv/
 # PDF 진단 산출물
 *.pdf
 tools/out/
+
+# 진단 산출물
+tools/out_*.json
