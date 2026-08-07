@@ -82,16 +82,21 @@ def run_pair(client, args, pair):
     }
 
 
-def summarize(results):
-    print("\n" + "=" * 78)
-    print("## 결과 — 선생님 채점과의 일치율")
-    print("| # | 시험지 | 문항 | 일치율 | 우리만 오답 | **놓친 오답** | 밀림 | 비용 |")
-    print("|---|---|---:|---:|---:|---:|:--:|---:|")
+def summarize(results, out_dir=None):
+    L = []
+    def say(x=""):
+        L.append(x)
+        print(x)
+
+    print("=" * 78)
+    say("## 결과 — 선생님 채점과의 일치율")
+    say("| # | 시험지 | 문항 | 일치율 | 우리만 오답 | **놓친 오답** | 밀림 | 비용 |")
+    say("|---|---|---:|---:|---:|---:|:--:|---:|")
     tot_n = tot_agree = tot_missed = tot_strict = drifted = 0
     cost = 0.0
     for i, r in enumerate(results, 1):
         if r.get("error"):
-            print(f"| {i} | (실패) | — | — | — | — | — | — |")
+            say(f"| {i} | (실패) | — | — | — | — | — | — |")
             continue
         c, s = r["compare"], r["sheet"]
         title = (s.get("title") or "?")[:26]
@@ -99,44 +104,55 @@ def summarize(results):
         tot_missed += len(c["theirs_only"]); tot_strict += len(c["ours_only"])
         drifted += 1 if r["warn"] else 0
         cost += r["cost"]
-        print(f"| {i} | {title} | {c['n']} | {c['rate']*100:.1f}% "
+        say(f"| {i} | {title} | {c['n']} | {c['rate']*100:.1f}% "
               f"| {len(c['ours_only'])} | **{len(c['theirs_only'])}** "
               f"| {'⚠️' if r['warn'] else '–'} | ${r['cost']:.3f} |")
 
     if not tot_n:
-        print("\n집계할 결과가 없습니다.")
+        say("집계할 결과가 없습니다.")
         return
     rate = tot_agree / tot_n
     missed = tot_missed / tot_n
-    print(f"| | **합계** | {tot_n} | **{rate*100:.1f}%** | {tot_strict} "
+    say(f"| | **합계** | {tot_n} | **{rate*100:.1f}%** | {tot_strict} "
           f"| **{tot_missed}** | {drifted}장 | ${cost:.2f} |")
 
-    print(f"\n## Phase 1 착수 기준")
+    say("")
+    say("## Phase 1 착수 기준")
     for label, val, ok in (
         ("선생님 채점 일치율 ≥ 95%", f"{rate*100:.1f}%", rate >= 0.95),
         ("놓친 오답 < 1%", f"{missed*100:.2f}% ({tot_missed}건)", missed < 0.01),
         ("밀림 경보 0장", f"{drifted}장", drifted == 0),
     ):
-        print(f"  {'✅' if ok else '❌'} {label:<26} → {val}")
+        say(f"  {'✅' if ok else '❌'} {label:<26} → {val}")
 
-    print("\n※ '우리만 오답'은 대부분 **선생님의 철자 관대 채점**입니다"
+    say("")
+    say("※ '우리만 오답'은 대부분 **선생님의 철자 관대 채점**입니다"
           " (12 §12.6). 채점 규칙으로 흡수할 수 있어 치명적이지 않습니다.")
-    print("   '놓친 오답'이 진짜 손해입니다 — 선생님은 틀렸다는데 우리가 맞다고 한 것입니다.")
+    say("   '놓친 오답'이 진짜 손해입니다 — 선생님은 틀렸다는데 우리가 맞다고 한 것입니다.")
 
     detail = [(i, r) for i, r in enumerate(results, 1)
               if not r.get("error") and (r["compare"]["theirs_only"] or r["warn"])]
     if detail:
-        print("\n## 들여다볼 것")
+        say("")
+        say("## 들여다볼 것")
         for i, r in detail:
             c = r["compare"]
             if c["theirs_only"]:
-                print(f"  {i}. 놓친 오답 {', '.join(c['theirs_only'])}번 "
+                say(f"  {i}. 놓친 오답 {', '.join(c['theirs_only'])}번 "
                       f"— 선생님 표기 {r['marks']['score_text'] or '없음'}")
                 for no in c["theirs_only"][:5]:
                     it = next((x for x in r["transcript"]["items"] if x["no"] == no), {})
-                    print(f"       {no}. {it.get('prompt','')!r} ← 학생 {it.get('written','')!r}")
+                    say(f"       {no}. {it.get('prompt','')!r} ← 학생 {it.get('written','')!r}")
             for w in r["warn"]:
-                print(f"  {i}. ⚠️ {w}")
+                say(f"  {i}. ⚠️ {w}")
+
+    if out_dir:
+        # 요약본에는 학생 이름도 파일 경로도 넣지 않습니다.
+        # 원자료(pair*.json)에는 둘 다 들어 있어 공유하면 안 됩니다.
+        path = os.path.join(out_dir, "summary.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("# GradeSnap 벤치마크 결과\n\n" + "\n".join(L) + "\n")
+        print(f"\n요약(이름 없음) → {path}   ← 공유·커밋해도 되는 것은 이 파일뿐입니다")
 
 
 def main():
@@ -201,8 +217,8 @@ def main():
         with open(os.path.join(a.out, f"pair{i:02d}.json"), "w", encoding="utf-8") as f:
             json.dump(r, f, ensure_ascii=False, indent=1)
 
-    summarize(results)
-    print(f"\n원자료 → {a.out}/")
+    summarize(results, a.out)
+    print(f"원자료 → {a.out}/   ⚠️ 학생 실명·답안 전문 포함. 공유·커밋 금지")
 
 
 if __name__ == "__main__":
