@@ -38,6 +38,8 @@ crops/
 manifest*.csv
 bench_results*.json
 # 벤치마크 원자료 — 학생 실명과 답안 전문이 들어 있다.
-# 디렉터리째 제외하면 하위 예외가 먹지 않으므로 bench/* 로 적는다.
-bench/*
-!bench/summary.md
+# 디렉터리째 제외하면 하위 예외가 먹지 않으므로 bench*/* 로 적는다.
+# `bench/*`로만 적었더니 --out에 bench_fix/를 준 순간 보호가 사라졌다.
+# 폴더 이름을 새로 짓는 것만으로 원자료가 노출되면 안 된다.
+bench*/*
+!bench*/summary.md

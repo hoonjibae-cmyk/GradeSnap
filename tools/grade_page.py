@@ -385,46 +385,58 @@ def check_drift(transcript, key=None):
     items, sheet = transcript["items"], transcript["sheet"]
     warn = []
 
+    def drift(text):
+        """밀림을 의심할 근거. 판정 기준(밀림 경보 0장)에 반영됩니다."""
+        warn.append({"level": "drift", "text": text})
+
+    def info(text):
+        """시험지 구조에 대한 사실 안내. 밀림이 아니므로 판정에 넣지 않습니다.
+
+        '절이 나뉜 시험지'라는 참인 안내가 밀림 경보로 세어지면,
+        멀쩡한 시험지가 기준 미달로 분류됩니다.
+        """
+        warn.append({"level": "info", "text": text})
+
     # 번호는 **인쇄된 문자열 그대로** 비교합니다. 숫자만 뽑아 비교하면
     # 절이 나뉜 시험지에서 '1'과 '1)'이 같은 번호로 취급돼 없는 중복을 만듭니다.
     nos = [str(i["no"]).strip() for i in items]
     dup = sorted({x for x in nos if nos.count(x) > 1})
     if dup:
-        warn.append(f"문항 번호가 중복됩니다: {', '.join(dup[:10])}"
-                    + (" …" if len(dup) > 10 else ""))
+        drift(f"문항 번호가 중복됩니다: {', '.join(dup[:10])}"
+              + (" …" if len(dup) > 10 else ""))
 
     # 번호가 도로 작아지면 새 절이 시작된 것으로 봅니다. 연속성은 절 안에서만 따집니다.
     secs = _sections([_numkey(x)[0] for x in nos])
     if len(secs) > 1:
-        warn.append(f"번호 묶음이 {len(secs)}개입니다 — 절이 나뉜 시험지로 보고 "
-                    f"연속성은 묶음 안에서만 검사합니다.")
+        info(f"번호 묶음이 {len(secs)}개입니다 — 절이 나뉜 시험지로 보고 "
+             f"연속성은 묶음 안에서만 검사합니다.")
     for k, seq in enumerate(secs, 1):
         seq = [n for n in seq if n < 10**9]
         if not seq:
             continue
         missing = sorted(set(range(min(seq), max(seq) + 1)) - set(seq))
         if missing:
-            warn.append(f"{k}번째 묶음의 번호가 비었습니다: {missing[:15]}"
-                        + (" …" if len(missing) > 15 else ""))
+            drift(f"{k}번째 묶음의 번호가 비었습니다: {missing[:15]}"
+                  + (" …" if len(missing) > 15 else ""))
 
     total = sheet.get("printed_total") or 0
     if total and total != len(items):
-        warn.append(f"인쇄된 문항 수 {total} ≠ 전사 {len(items)} — 밀렸거나 빠졌습니다.")
+        drift(f"인쇄된 문항 수 {total} ≠ 전사 {len(items)} — 밀렸거나 빠졌습니다.")
 
     if key:
         known = {str(k["no"]): (k.get("prompt") or "") for k in key}
         bad = [i["no"] for i in items
                if known.get(i["no"]) and _norm(known[i["no"]]) != _norm(i["prompt"])]
         if bad:
-            warn.append(f"제시어가 정답표와 다릅니다(밀림 의심): {bad[:15]}"
-                        + (" …" if len(bad) > 15 else ""))
+            drift(f"제시어가 정답표와 다릅니다(밀림 의심): {bad[:15]}"
+                  + (" …" if len(bad) > 15 else ""))
 
     empty = sum(1 for i in items if not (i.get("prompt") or "").strip())
     if empty:
-        warn.append(f"제시어가 비어 있는 문항 {empty}개 — 밀림 검증이 그만큼 약해집니다.")
+        info(f"제시어가 비어 있는 문항 {empty}개 — 밀림 검증이 그만큼 약해집니다.")
 
-    warn += _check_prefix(items)
-    warn += _check_language(items)
+    for t in _check_prefix(items) + _check_language(items):
+        drift(t)
     return warn
 
 
@@ -527,7 +539,7 @@ def print_transcript(t, warn, usages, model):
     if illeg:
         print(f"판독불가: {', '.join(illeg)}")
     for w in warn:
-        print(f"⚠️  {w}")
+        print(("⚠️  " if w["level"] == "drift" else "ℹ️  ") + w["text"])
     c = cost_usd(usages, model)
     lat = sum(u["latency_ms"] for u in usages)
     tok = sum(u["out_tok"] for u in usages)

@@ -85,6 +85,15 @@ def run_pair(client, args, pair):
     }
 
 
+def _has_drift(warn):
+    """구조 안내(ℹ️)는 밀림 경보가 아닙니다.
+
+    '절이 나뉜 시험지'라는 참인 안내를 밀림으로 세면 멀쩡한 시험지가
+    기준 미달로 분류됩니다. 판정에는 drift만 넣습니다.
+    """
+    return any(w.get("level") == "drift" for w in warn or [])
+
+
 def summarize(results, out_dir=None):
     L = []
     def say(x=""):
@@ -117,10 +126,11 @@ def summarize(results, out_dir=None):
         else:
             tot_n += c["n"]; tot_agree += c["agree"]
             tot_missed += len(c["theirs_only"]); tot_strict += len(c["ours_only"])
-            drifted += 1 if r["warn"] else 0
+            drifted += 1 if _has_drift(r["warn"]) else 0
         say(f"| {i} | {title} | {c['n']} | {c['rate']*100:.1f}%{'*' if um else ''} "
               f"| {len(c['ours_only'])} | **{len(c['theirs_only'])}** "
-              f"| {len(um) or '–'} | {'⚠️' if r['warn'] else '–'} | ${r['cost']:.3f} |")
+              f"| {len(um) or '–'} | {'⚠️' if _has_drift(r['warn']) else ('ℹ️' if r['warn'] else '–')}"
+              f" | ${r['cost']:.3f} |")
 
     if not tot_n:
         say("")
@@ -183,7 +193,7 @@ def summarize(results, out_dir=None):
                     it = next((x for x in r["transcript"]["items"] if x["no"] == no), {})
                     say(f"       {no}. {it.get('prompt','')!r} ← 학생 {it.get('written','')!r}")
             for w in r["warn"]:
-                say(f"  {i}. ⚠️ {w}")
+                say(f"  {i}. {'⚠️' if w['level'] == 'drift' else 'ℹ️'} {w['text']}")
 
     if out_dir:
         # 요약본에는 학생 이름도 파일 경로도 넣지 않습니다.
@@ -247,7 +257,7 @@ def main():
             print(f"   {r['sheet'].get('title','?')[:40]} · 문항 {r['n_items']} "
                   f"· 일치 {c['agree']}/{c['n']} ({c['rate']*100:.1f}%) · ${r['cost']:.3f}")
             for w in r["warn"]:
-                print(f"   ⚠️  {w}")
+                print(("   ⚠️  " if w["level"] == "drift" else "   ℹ️  ") + w["text"])
         except Exception as e:                       # noqa: BLE001 — 한 쌍 실패로 전체를 멈추지 않는다
             print(f"   ❌ 실패: {type(e).__name__}: {str(e)[:200]}")
             traceback.print_exc(limit=2)
