@@ -56,7 +56,7 @@ AI가 페이지 전체를 문항별로 전사 (번호 · 인쇄된 제시어 · 
 | [06. 시험지 양식 가이드](docs/06-exam-form-guide.md) | 인쇄 규격, 마커, QR | 🛑 보류 |
 | [07. 개발 로드맵](docs/07-roadmap.md) | 단계별 범위, 일정, 리스크 | ⚠️ Phase 0 개정 |
 | [08. 샘플 분석](docs/08-sample-analysis.md) | 실제 학생 답안지 약 55장 분석 | |
-| [09. 생성기 연동 설계](docs/09-yunique-voca-integration.md) | 유니크보카 생성기 분석 | |
+| [09. 생성기 연동 설계](docs/09-yunique-voca-integration.md) | 유니크보카 생성기 분석 | 🛑 불필요해짐 |
 | [10. PDF 자동 추출 실험](docs/10-pdf-extraction-findings.md) | 시험지·정답지에서 정답표 뽑기 | |
 | [11. 인식 벤치마크 실행 절차](docs/11-recognition-benchmark.md) | crop 기반 벤치마크 | 🛑 대체됨 |
 | **[12. 페이지 단위 채점](docs/12-page-level-grading.md)** | **설계 전환 결정 기록. 여기부터 읽으십시오** | ⭐ |
