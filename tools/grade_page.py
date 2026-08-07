@@ -47,6 +47,9 @@ import sys
 import time
 import unicodedata
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mask_header import mask as mask_header
+
 try:
     import anthropic
 except ImportError:
@@ -227,14 +230,25 @@ def encode(img):
     return base64.standard_b64encode(buf.getvalue()).decode()
 
 
-def bands(path, n, overlap=0.12):
+def open_image(path, mask_top=False):
+    """전송할 이미지를 연다. mask_top이면 **API로 나가기 전에** 이름을 덮는다.
+
+    가리는 시점이 중요합니다. 나갔다 온 뒤에 가리는 건 아무 의미가 없습니다.
+    """
+    if mask_top:
+        img, _ = mask_header(path)
+        return img
+    return Image.open(path)
+
+
+def bands(path, n, overlap=0.12, mask_top=False):
     """페이지를 위아래로 겹쳐 나눕니다.
 
     통짜로 넣으면 답안 한 칸이 너무 작아 연필이 안 읽히는 경우를 위한 장치입니다.
     좌표는 여전히 필요 없습니다 — 단순 등분이고, 겹치는 띠를 둬서 경계에 걸친 행이
     어느 한쪽에는 온전히 들어가게 합니다.
     """
-    img = Image.open(path)
+    img = open_image(path, mask_top)
     if n <= 1:
         return [img]
     W, H = img.size
@@ -288,8 +302,9 @@ def cost_usd(usages, model):
 
 # ── 단계 ─────────────────────────────────────────────────────────────────
 
-def transcribe(client, model, path, split=1, effort="high", thinking=True):
-    parts = bands(path, split)
+def transcribe(client, model, path, split=1, effort="high", thinking=True,
+               mask_top=False):
+    parts = bands(path, split, mask_top=mask_top)
     if split == 1:
         data, u = call(client, model, TRANSCRIBE_SYSTEM,
                        "이 답안지의 모든 문항을 전사하십시오. 빈칸도 빠짐없이 포함하십시오.",
@@ -320,10 +335,10 @@ def _numkey(s):
     return (int(m.group()) if m else 10**9, s)
 
 
-def read_marks(client, model, path, effort="high", thinking=True):
+def read_marks(client, model, path, effort="high", thinking=True, mask_top=False):
     return call(client, model, MARKS_SYSTEM,
                 "이 답안지에서 선생님이 오답으로 표시한 문항 번호를 모두 찾으십시오.",
-                [Image.open(path)], MARKS_SCHEMA, effort, thinking)
+                [open_image(path, mask_top)], MARKS_SCHEMA, effort, thinking)
 
 
 def judge(client, model, transcript, key=None, strict=False, effort="high", thinking=True):
@@ -342,7 +357,7 @@ def judge(client, model, transcript, key=None, strict=False, effort="high", thin
 
 # ── 검증 ─────────────────────────────────────────────────────────────────
 
-def check_drift(transcript, key=None):
+def check_drift(transcript, key=None, total_override=None):
     """행 밀림을 잡는다 — 이 방식의 유일한 치명적 실패 모드다.
 
     좌표가 없으므로 세 가지로 교차 확인합니다.
@@ -363,7 +378,9 @@ def check_drift(transcript, key=None):
             warn.append(f"번호가 비었습니다: {missing[:15]}"
                         + (" …" if len(missing) > 15 else ""))
 
-    total = sheet.get("printed_total") or 0
+    # 머리말을 가렸다면 AI는 문항 수를 못 읽습니다. 사람이 지정한 값이 항상 우선입니다 —
+    # 조교가 업로드할 때 어차피 고르는 값이고, AI가 읽은 것보다 신뢰할 수 있습니다.
+    total = total_override or sheet.get("printed_total") or 0
     if total and total != len(items):
         warn.append(f"인쇄된 문항 수 {total} ≠ 전사 {len(items)} — 밀렸거나 빠졌습니다.")
 
@@ -467,10 +484,15 @@ def main():
     t.add_argument("--split", type=int, default=1, help="글씨가 작으면 2~4로 나눠 보낸다")
     t.add_argument("--repeat", type=int, default=1, help="같은 사진을 N번 읽어 비결정성을 잰다")
     t.add_argument("--key", help="정답표 JSON — 있으면 제시어 대조로 밀림을 잡는다")
+    t.add_argument("--mask-name", action="store_true",
+                   help="전송 전에 머리말(학생 이름)을 자동으로 덮는다")
+    t.add_argument("--total", type=int,
+                   help="이 시험지의 총 문항 수. 머리말을 가리면 AI가 못 읽으므로 사람이 알려준다")
     t.add_argument("--out")
 
     m = sub.add_parser("marks", help="채점 후 사진 → 선생님 오답 번호")
     m.add_argument("--image", required=True)
+    m.add_argument("--mask-name", action="store_true")
     m.add_argument("--out")
 
     j = sub.add_parser("judge", help="전사 결과 → 문항별 정오")
@@ -488,8 +510,9 @@ def main():
     if a.cmd == "transcribe":
         runs = []
         for r in range(a.repeat):
-            data, usages = transcribe(client, a.model, a.image, a.split, a.effort, think)
-            warn = check_drift(data, key)
+            data, usages = transcribe(client, a.model, a.image, a.split, a.effort, think,
+                                      a.mask_name)
+            warn = check_drift(data, key, a.total)
             if a.repeat > 1:
                 print(f"\n───── 실행 {r+1}/{a.repeat} ─────")
             print_transcript(data, warn, usages, a.model)
@@ -499,7 +522,7 @@ def main():
         dump(a.out, runs[0] if a.repeat == 1 else {"runs": runs})
 
     elif a.cmd == "marks":
-        data, u = read_marks(client, a.model, a.image, a.effort, think)
+        data, u = read_marks(client, a.model, a.image, a.effort, think, a.mask_name)
         print(f"\n채점함 표시: {data['convention']['check_mark']}")
         print(f"오답 표시  : {data['convention']['wrong_mark']}")
         print(f"근거: {data['convention']['reasoning']}")
