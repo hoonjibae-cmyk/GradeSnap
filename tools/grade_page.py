@@ -137,7 +137,9 @@ MARKS_SCHEMA = {
             "additionalProperties": False,
         },
         "wrong": {"type": "array", "items": {"type": "string"},
-                  "description": "오답 표시가 붙은 문항 번호"},
+                  "description": "오답 표시가 붙은 문항 번호. 인쇄된 표기 그대로 "
+                                 "('12', '3)' 등). 설명·문항 내용은 넣지 말 것. "
+                                 "번호를 특정할 수 없는 표시는 아예 넣지 말 것."},
         "score_text": {"type": "string", "description": "선생님이 적은 점수·오답 개수 표기 그대로. 예 '-12'"},
         "pass_fail": {"type": "string", "enum": ["pass", "fail", "unmarked"]},
         "confidence": {"type": "number"},
@@ -335,9 +337,20 @@ def _numkey(s):
     return (int(m.group()) if m else 10**9, s)
 
 
-def read_marks(client, model, path, effort="high", thinking=True, mask_top=False):
-    return call(client, model, MARKS_SYSTEM,
-                "이 답안지에서 선생님이 오답으로 표시한 문항 번호를 모두 찾으십시오.",
+def read_marks(client, model, path, effort="high", thinking=True, mask_top=False,
+               item_numbers=None):
+    """채점 후 사진에서 오답 번호를 읽습니다.
+
+    `item_numbers`를 주면 **그 목록 안에서만** 고르게 합니다. 안 주면 모델이
+    '1) 동명사만 쓰는 동사 - decide' 같은 산문을 뱉어 대조가 통째로 깨집니다.
+    정답을 알려주는 게 아니라 번호 체계를 알려주는 것이라 편향은 없습니다.
+    """
+    text = "이 답안지에서 선생님이 오답으로 표시한 문항 번호를 모두 찾으십시오."
+    if item_numbers:
+        text += ("\n\n이 시험지의 문항 번호는 아래가 전부입니다. "
+                 "**반드시 이 중에서만** 고르고, 인쇄된 표기 그대로 적으십시오.\n"
+                 + ", ".join(item_numbers))
+    return call(client, model, MARKS_SYSTEM, text,
                 [open_image(path, mask_top)], MARKS_SCHEMA, effort, thinking)
 
 
@@ -368,14 +381,26 @@ def check_drift(transcript, key=None):
     items, sheet = transcript["items"], transcript["sheet"]
     warn = []
 
-    nums = [_numkey(i["no"])[0] for i in items]
-    if len(set(nums)) != len(nums):
-        warn.append("문항 번호가 중복됩니다 — 조각 병합이 잘못됐을 수 있습니다.")
-    seq = [n for n in nums if n < 10**9]
-    if seq:
+    # 번호는 **인쇄된 문자열 그대로** 비교합니다. 숫자만 뽑아 비교하면
+    # 절이 나뉜 시험지에서 '1'과 '1)'이 같은 번호로 취급돼 없는 중복을 만듭니다.
+    nos = [str(i["no"]).strip() for i in items]
+    dup = sorted({x for x in nos if nos.count(x) > 1})
+    if dup:
+        warn.append(f"문항 번호가 중복됩니다: {', '.join(dup[:10])}"
+                    + (" …" if len(dup) > 10 else ""))
+
+    # 번호가 도로 작아지면 새 절이 시작된 것으로 봅니다. 연속성은 절 안에서만 따집니다.
+    secs = _sections([_numkey(x)[0] for x in nos])
+    if len(secs) > 1:
+        warn.append(f"번호 묶음이 {len(secs)}개입니다 — 절이 나뉜 시험지로 보고 "
+                    f"연속성은 묶음 안에서만 검사합니다.")
+    for k, seq in enumerate(secs, 1):
+        seq = [n for n in seq if n < 10**9]
+        if not seq:
+            continue
         missing = sorted(set(range(min(seq), max(seq) + 1)) - set(seq))
         if missing:
-            warn.append(f"번호가 비었습니다: {missing[:15]}"
+            warn.append(f"{k}번째 묶음의 번호가 비었습니다: {missing[:15]}"
                         + (" …" if len(missing) > 15 else ""))
 
     total = sheet.get("printed_total") or 0
@@ -440,24 +465,47 @@ def _has_hangul(s):
     return any("가" <= c <= "힣" for c in s)
 
 
+def _sections(nums):
+    """번호가 줄어드는 지점에서 끊어 절 목록을 만듭니다."""
+    secs, cur = [], []
+    for n in nums:
+        if cur and n <= cur[-1]:
+            secs.append(cur)
+            cur = []
+        cur.append(n)
+    if cur:
+        secs.append(cur)
+    return secs
+
+
 def _norm(s):
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", s or "")).lower()
 
 
 def compare(judged, marks):
-    """우리 채점과 선생님 채점을 맞춰 봅니다. 이게 벤치마크의 핵심 지표입니다."""
+    """우리 채점과 선생님 채점을 맞춰 봅니다. 이게 벤치마크의 핵심 지표입니다.
+
+    **정렬 실패를 채점 실패로 세지 않습니다.** 마크 판독이 문항 번호가 아니라
+    '1) 동명사만 쓰는 동사 - decide' 같은 산문을 돌려주면, 그건 우리가 오답을
+    놓친 것이 아니라 두 결과를 맞출 수 없는 것입니다. 이걸 섞으면 Phase 1의
+    판정 지표(놓친 오답)가 조용히 부풀어 신뢰를 잃습니다.
+    """
+    known = {r["no"] for r in judged["results"]}
     ours = {r["no"] for r in judged["results"] if not r["correct"]}
-    theirs = set(marks["wrong"])
-    allq = {r["no"] for r in judged["results"]} | theirs
-    agree = len(allq) - len(ours ^ theirs)
+    raw = {str(w).strip() for w in (marks.get("wrong") or []) if str(w).strip()}
+    theirs = {w for w in raw if w in known}
+    unmatched = sorted(raw - known)          # 전사 문항에 붙일 수 없는 마크
+
+    agree = len(known) - len(ours ^ theirs)
     return {
-        "n": len(allq),
+        "n": len(known),
         "agree": agree,
-        "rate": agree / len(allq) if allq else 0.0,
+        "rate": agree / len(known) if known else 0.0,
         "ours_only": sorted(ours - theirs, key=_numkey),    # 우리가 더 엄격
-        "theirs_only": sorted(theirs - ours, key=_numkey),  # 우리가 놓쳤거나 더 관대
+        "theirs_only": sorted(theirs - ours, key=_numkey),  # 진짜 놓친 오답
         "ours_wrong": sorted(ours, key=_numkey),
         "theirs_wrong": sorted(theirs, key=_numkey),
+        "unmatched_marks": unmatched,        # 대조 불가 — 채점 실패가 아님
     }
 
 

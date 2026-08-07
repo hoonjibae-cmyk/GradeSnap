@@ -71,7 +71,10 @@ def run_pair(client, args, pair):
     t, usages = G.transcribe(client, args.model, pair["before"], args.split,
                              args.effort, think)
     warn = G.check_drift(t)
-    m, um = G.read_marks(client, args.model, pair["after"], args.effort, think)
+    # 전사된 번호 목록을 넘겨 마크 판독을 그 안에서만 고르게 합니다.
+    # 안 그러면 산문 라벨이 돌아와 대조가 통째로 깨집니다.
+    m, um = G.read_marks(client, args.model, pair["after"], args.effort, think,
+                         item_numbers=[i["no"] for i in t["items"]])
     j, uj = G.judge(client, args.model, t, None, args.strict, args.effort, think)
     cmp_ = G.compare(j, m)
     return {
@@ -90,31 +93,53 @@ def summarize(results, out_dir=None):
 
     print("=" * 78)
     say("## 결과 — 선생님 채점과의 일치율")
-    say("| # | 시험지 | 문항 | 일치율 | 우리만 오답 | **놓친 오답** | 밀림 | 비용 |")
-    say("|---|---|---:|---:|---:|---:|:--:|---:|")
+    say("| # | 시험지 | 문항 | 일치율 | 우리만 오답 | **놓친 오답** | 대조불가 | 밀림 | 비용 |")
+    say("|---|---|---:|---:|---:|---:|:--:|:--:|---:|")
     tot_n = tot_agree = tot_missed = tot_strict = drifted = 0
     cost = 0.0
+    excluded = []
     for i, r in enumerate(results, 1):
         if r.get("error"):
             say(f"| {i} | (실패) | — | — | — | — | — | — |")
             continue
         c, s = r["compare"], r["sheet"]
         title = (s.get("title") or "?")[:26]
-        tot_n += c["n"]; tot_agree += c["agree"]
-        tot_missed += len(c["theirs_only"]); tot_strict += len(c["ours_only"])
-        drifted += 1 if r["warn"] else 0
+        um = c.get("unmatched_marks") or []
         cost += r["cost"]
-        say(f"| {i} | {title} | {c['n']} | {c['rate']*100:.1f}% "
+        if um:
+            # 대조가 깨진 장은 합계에 넣지 않습니다. 정렬 실패를 채점 실패로
+            # 세면 판정 지표가 조용히 부풀어 결론 전체가 못 믿을 것이 됩니다.
+            excluded.append((i, title, um))
+        else:
+            tot_n += c["n"]; tot_agree += c["agree"]
+            tot_missed += len(c["theirs_only"]); tot_strict += len(c["ours_only"])
+            drifted += 1 if r["warn"] else 0
+        say(f"| {i} | {title} | {c['n']} | {c['rate']*100:.1f}%{'*' if um else ''} "
               f"| {len(c['ours_only'])} | **{len(c['theirs_only'])}** "
-              f"| {'⚠️' if r['warn'] else '–'} | ${r['cost']:.3f} |")
+              f"| {len(um) or '–'} | {'⚠️' if r['warn'] else '–'} | ${r['cost']:.3f} |")
 
     if not tot_n:
-        say("집계할 결과가 없습니다.")
+        say("")
+        say("집계할 결과가 없습니다 — 대조 가능한 장이 없습니다.")
+        for i, title, um in excluded:
+            say(f"   {i}. {title} — 붙일 수 없는 마크 {len(um)}개")
         return
     rate = tot_agree / tot_n
     missed = tot_missed / tot_n
     say(f"| | **합계** | {tot_n} | **{rate*100:.1f}%** | {tot_strict} "
-          f"| **{tot_missed}** | {drifted}장 | ${cost:.2f} |")
+          f"| **{tot_missed}** | – | {drifted}장 | ${cost:.2f} |")
+
+    if excluded:
+        say("")
+        say(f"⚠️ **{len(excluded)}장은 합계에서 제외했습니다** — 선생님 마크를 전사 문항에"
+            " 붙일 수 없었습니다(`*` 표시).")
+        say("   정렬 실패이지 채점 실패가 아닙니다. 이걸 섞으면 아래 판정이 거짓이 됩니다.")
+        for i, title, um in excluded:
+            say(f"   {i}. {title} — 붙일 수 없는 마크 {len(um)}개: "
+                + ", ".join(repr(x)[:40] for x in um[:3]))
+        say("   **번호 체계가 평평하지 않은 시험지**(절이 나뉘거나 자유 나열)일 가능성이"
+            " 큽니다. 12 §12.4의 번호+제시어 정합은 번호가 한 줄로 이어지는"
+            " 단어시험을 전제로 설계됐습니다.")
 
     say("")
     say("## Phase 1 착수 기준")
