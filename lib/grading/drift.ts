@@ -13,6 +13,8 @@ import type { Item, Transcript, Warning } from "./types";
 export function checkDrift(t: Transcript, key?: { no: string; prompt: string }[]): Warning[] {
   const warn: Warning[] = [];
   const drift = (text: string) => warn.push({ level: "drift", text });
+  // 시험지 일부만 찍힌 상태. 밀림과 원인도 대응도 다릅니다 — 더 찍으면 됩니다.
+  const incomplete = (text: string) => warn.push({ level: "incomplete", text });
   // 시험지 구조에 대한 사실 안내. 밀림이 아니므로 판정에 넣지 않습니다.
   const info = (text: string) => warn.push({ level: "info", text });
 
@@ -47,7 +49,20 @@ export function checkDrift(t: Transcript, key?: { no: string; prompt: string }[]
 
   const total = t.sheet?.printedTotal || 0;
   if (total && total !== items.length) {
-    drift(`인쇄된 문항 수 ${total} ≠ 전사 ${items.length} — 밀렸거나 빠졌습니다.`);
+    // 번호가 1..N으로 빠짐없이 이어지는데 총 개수만 모자라면 **뒷면을 안 찍은 것**입니다.
+    // 밀림이면 번호가 비거나 중복됩니다. 원인이 다르면 문구도 달라야 합니다.
+    const contiguous = !warn.some((w) => w.level === "drift");
+    if (contiguous && items.length < total) {
+      const nums = nos.map(numKey).filter((n) => n < Number.MAX_SAFE_INTEGER);
+      const last = nums.length ? Math.max(...nums) : items.length;
+      incomplete(
+        `이 시험지는 ${total}문항인데 ${items.length}문항만 찍혔습니다 ` +
+          `(${last}번까지). **뒷면이나 다음 장을 마저 찍어 함께 올리십시오.** ` +
+          `이대로는 안 찍힌 문항을 통째로 틀려도 통과로 나옵니다.`,
+      );
+    } else {
+      drift(`인쇄된 문항 수 ${total} ≠ 전사 ${items.length} — 밀렸거나 빠졌습니다.`);
+    }
   }
 
   if (key?.length) {
@@ -122,4 +137,9 @@ function checkLanguage(items: Item[]): string[] {
 /** 구조 안내(info)는 밀림이 아닙니다. 판정에는 drift만 넣습니다. */
 export function hasDrift(warn: Warning[] | null | undefined): boolean {
   return (warn ?? []).some((w) => w.level === "drift");
+}
+
+/** 시험지 일부만 찍혔는가. **이때는 PASS/FAIL을 내면 안 됩니다.** */
+export function isIncomplete(warn: Warning[] | null | undefined): boolean {
+  return (warn ?? []).some((w) => w.level === "incomplete");
 }

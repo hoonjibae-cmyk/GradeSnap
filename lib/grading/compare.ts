@@ -20,6 +20,12 @@ export function compare(
   marks: Pick<MarkReading, "wrong" | "passFail">,
   cutLine?: string | null,
   boundary = 2,
+  /**
+   * 시험지 일부만 찍혔으면 true. **PASS/FAIL을 내지 않습니다.**
+   * 60문항 중 47문항만 보고 "오답 3개니까 통과"라고 하면, 안 찍힌 13문항을
+   * 통째로 틀린 학생도 집에 보내게 됩니다.
+   */
+  incomplete = false,
 ): Comparison {
   const known = new Set(results.map((r) => r.no));
   const ours = new Set(results.filter((r) => !r.correct).map((r) => r.no));
@@ -32,18 +38,22 @@ export function compare(
   const agree = known.size - sym.length;
 
   const cut = parseCut(cutLine, known.size);
-  const ourVerdict = verdict(ours.size, cut);
+  const ourVerdict = incomplete ? null : verdict(ours.size, cut);
   // 선생님이 PASS/FAIL을 적어 두었으면 그게 우선입니다. 없으면 마크 개수로 셉니다.
-  const theirVerdict =
-    marks.passFail === "pass" || marks.passFail === "fail" ? marks.passFail : verdict(theirs.size, cut);
+  const theirVerdict = incomplete
+    ? null
+    : marks.passFail === "pass" || marks.passFail === "fail"
+      ? marks.passFail
+      : verdict(theirs.size, cut);
 
   return {
+    incomplete,
     cut,
     ourVerdict,
     theirVerdict,
     verdictMatch: ourVerdict === null || theirVerdict === null ? null : ourVerdict === theirVerdict,
     // 커트라인 근처면 문항 오차 하나가 결정을 뒤집습니다. 그 장만 사람이 봅니다.
-    nearBoundary: cut !== null && Math.abs(ours.size - cut) <= boundary,
+    nearBoundary: !incomplete && cut !== null && Math.abs(ours.size - cut) <= boundary,
     margin: cut === null ? null : ours.size - cut,
     n: known.size,
     agree,

@@ -12,25 +12,29 @@ import { parseCut, verdict } from "@/lib/grading/cutline";
  * 눈으로 보는 것이 목적입니다. 여러 장·검수·명단은 2~4단계입니다.
  */
 export default function Home() {
-  const [img, setImg] = useState<PreparedImage | null>(null);
+  // 한 학생의 답안지 사진들. **양면 인쇄면 앞·뒤 두 장입니다.**
+  const [imgs, setImgs] = useState<PreparedImage[]>([]);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<GradeResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [strict, setStrict] = useState(false);
+  // 커트라인이 빨간펜에 가려 안 읽힐 때만 씁니다. 시험 하나에 한 번입니다.
+  const [cutOverride, setCutOverride] = useState("");
 
-  async function onPick(file: File | undefined) {
-    if (!file) return;
+  async function onPick(files: FileList | null) {
+    if (!files?.length) return;
     setErr(null);
     setRes(null);
     try {
-      setImg(await prepareImage(file));
+      const prepared = await Promise.all([...files].map((f) => prepareImage(f)));
+      setImgs((prev) => [...prev, ...prepared]);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
   }
 
   async function run() {
-    if (!img) return;
+    if (!imgs.length) return;
     setBusy(true);
     setErr(null);
     setRes(null);
@@ -38,7 +42,11 @@ export default function Home() {
       const r = await fetch("/api/grade", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image: img.base64, mediaType: img.mediaType, strictSpelling: strict }),
+        body: JSON.stringify({
+          images: imgs.map((i) => ({ data: i.base64, mediaType: i.mediaType })),
+          strictSpelling: strict,
+          cutLineOverride: cutOverride,
+        }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
@@ -52,7 +60,9 @@ export default function Home() {
 
   const wrong = res?.results.filter((r) => !r.correct) ?? [];
   const cut = res ? parseCut(res.transcript.sheet.cutLine, res.results.length) : null;
-  const v = res ? verdict(wrong.length, cut) : null;
+  // 시험지 일부만 찍혔으면 판정하지 않습니다. 안 찍힌 문항을 통째로 틀려도
+  // 통과로 나가기 때문입니다.
+  const v = res && !res.incomplete ? verdict(wrong.length, cut) : null;
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-24">
@@ -63,42 +73,76 @@ export default function Home() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <label className="block">
-          <span className="mb-2 block text-sm font-medium">채점 전 답안지 사진</span>
+          <span className="mb-1 block text-sm font-medium">답안지 사진</span>
+          <span className="mb-2 block text-xs text-slate-500">
+            한 학생의 답안지입니다. <strong>양면이면 앞·뒤를 모두</strong> 올리십시오.
+            순서는 상관없습니다 — 문항 번호로 합칩니다.
+          </span>
           <input
             type="file"
             accept="image/*"
+            multiple
             capture="environment"
-            onChange={(e) => onPick(e.target.files?.[0])}
+            onChange={(e) => {
+              void onPick(e.target.files);
+              e.target.value = "";
+            }}
             className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-white"
           />
         </label>
 
-        {img && (
-          <div className="mt-4 flex gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.objectUrl} alt="" className="h-40 w-auto rounded-lg border border-slate-200 object-contain" />
-            <div className="text-sm text-slate-600">
-              <p>
-                {img.width}×{img.height} · {(img.bytes / 1024).toFixed(0)}KB
-              </p>
-              <p className="mt-1 text-xs text-slate-500">모델이 볼 이미지입니다. 글씨가 읽히는지 확인하십시오.</p>
-              <label className="mt-3 flex items-center gap-2">
+        {imgs.length > 0 && (
+          <>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {imgs.map((im, k) => (
+                <figure key={k} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={im.objectUrl} alt="" className="h-36 w-auto rounded-lg border border-slate-200 object-contain" />
+                  <button
+                    onClick={() => setImgs((p) => p.filter((_, i) => i !== k))}
+                    className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs text-slate-600 shadow"
+                    aria-label="빼기"
+                  >
+                    ✕
+                  </button>
+                  <figcaption className="mt-1 text-center text-xs text-slate-500">
+                    {k + 1}쪽 · {(im.bytes / 1024).toFixed(0)}KB
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              모델이 볼 이미지입니다. 글씨가 읽히는지 확인하십시오.
+            </p>
+
+            <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+              <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={strict} onChange={(e) => setStrict(e.target.checked)} />
                 <span>철자를 엄격히 본다</span>
+                <span className="text-xs text-slate-500">(기본은 선생님들 채점에 맞춘 관대)</span>
               </label>
-              <p className="mt-1 text-xs text-slate-500">
-                선생님들은 지금 한 글자 오타를 정답 처리합니다. 기본은 그에 맞춘 관대입니다.
-              </p>
+              <label className="block text-sm">
+                <span className="text-slate-700">커트라인 직접 입력</span>
+                <span className="ml-2 text-xs text-slate-500">
+                  머리말이 빨간펜에 가려 안 읽힐 때만. 시험 하나에 한 번이면 됩니다.
+                </span>
+                <input
+                  value={cutOverride}
+                  onChange={(e) => setCutOverride(e.target.value)}
+                  placeholder="예: -8 까지 pass"
+                  className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
             </div>
-          </div>
+          </>
         )}
 
         <button
           onClick={run}
-          disabled={!img || busy}
+          disabled={!imgs.length || busy}
           className="mt-4 rounded-lg bg-slate-900 px-5 py-2.5 font-medium text-white disabled:opacity-40"
         >
-          {busy ? "채점 중… (20~40초)" : "채점"}
+          {busy ? `채점 중… (${imgs.length}장, 장당 20~40초)` : `채점 (${imgs.length}장)`}
         </button>
       </section>
 
@@ -133,9 +177,15 @@ export default function Home() {
                 ${res.costUsd.toFixed(3)} · {(res.usage.reduce((a, u) => a + u.latencyMs, 0) / 1000).toFixed(0)}초
               </span>
             </div>
-            {cut === null && (
-              <p className="mt-2 text-sm text-amber-700">
+            {res.incomplete && (
+              <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+                시험지 일부만 찍혀 <strong>PASS/FAIL을 판정하지 않았습니다.</strong> 나머지 장을 마저 올리십시오.
+              </p>
+            )}
+            {!res.incomplete && cut === null && (
+              <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
                 커트라인을 못 읽어 PASS/FAIL을 판정하지 않았습니다. 추측하면 학생이 잘못 남습니다.
+                위 <strong>커트라인 직접 입력</strong>에 넣고 다시 채점하십시오.
               </p>
             )}
           </section>
@@ -148,10 +198,12 @@ export default function Home() {
                   className={`rounded-lg border p-3 text-sm ${
                     w.level === "drift"
                       ? "border-amber-300 bg-amber-50 text-amber-900"
-                      : "border-slate-200 bg-slate-100 text-slate-700"
+                      : w.level === "incomplete"
+                        ? "border-rose-300 bg-rose-50 text-rose-900"
+                        : "border-slate-200 bg-slate-100 text-slate-700"
                   }`}
                 >
-                  {w.level === "drift" ? "⚠️ " : "ℹ️ "}
+                  {w.level === "drift" ? "⚠️ " : w.level === "incomplete" ? "📄 " : "ℹ️ "}
                   {w.text}
                 </p>
               ))}

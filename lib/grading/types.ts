@@ -42,13 +42,18 @@ export interface Transcript {
 }
 
 /**
- * 검증 경보.
+ * 검증 경보. 세 단계이고 **뜻이 서로 다릅니다.**
  *
- * `drift`만 판정에 반영합니다. `info`는 "절이 나뉜 시험지" 같은 **참인 안내**라
- * 이걸 밀림으로 세면 멀쩡한 시험지가 기준 미달로 분류됩니다.
+ * - `drift`      행이 밀렸을 수 있다. 판정 기준(밀림 경보 0장)에 반영합니다.
+ * - `incomplete` 시험지의 일부만 찍혔다. **PASS/FAIL을 내면 안 됩니다.**
+ *                안 찍힌 문항을 통째로 틀렸어도 PASS로 나가기 때문입니다.
+ * - `info`       "절이 나뉜 시험지" 같은 참인 안내. 판정에 넣지 않습니다.
+ *
+ * 셋을 뭉뚱그리면 "뒷면을 안 찍었다"와 "행이 밀렸다"가 같은 문구로 나옵니다.
+ * 조교가 해야 할 일이 완전히 다른데도요.
  */
 export interface Warning {
-  level: "drift" | "info";
+  level: "drift" | "incomplete" | "info";
   text: string;
 }
 
@@ -72,6 +77,8 @@ export interface JudgeResult {
 export type Verdict = "pass" | "fail";
 
 export interface Comparison {
+  /** 시험지 일부만 찍혔으면 true. 이때는 PASS/FAIL을 내지 않습니다. */
+  incomplete: boolean;
   /** 허용 오답 개수. 머리말에서 못 읽으면 null */
   cut: number | null;
   ourVerdict: Verdict | null;

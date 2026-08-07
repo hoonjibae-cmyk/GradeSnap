@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { anthropic, costUsd } from "@/lib/grading/client";
-import { checkDrift } from "@/lib/grading/drift";
+import { checkDrift, isIncomplete } from "@/lib/grading/drift";
+import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import type { JudgeResult, Transcript, Usage, Warning } from "@/lib/grading/types";
 
@@ -15,16 +16,26 @@ export interface GradeResponse {
   transcript: Transcript;
   warnings: Warning[];
   results: JudgeResult[];
+  /** 시험지 일부만 찍혔는가. true면 PASS/FAIL을 내지 않습니다. */
+  incomplete: boolean;
+  pages: number;
   usage: Usage[];
   costUsd: number;
 }
 
 interface GradeRequest {
-  /** 브라우저에서 2576px로 줄인 JPEG의 base64 (데이터 URL 접두사 없이) */
-  image: string;
-  mediaType?: "image/jpeg" | "image/png";
+  /**
+   * **한 학생의 답안지** 사진들. 양면 인쇄면 앞·뒤 두 장입니다.
+   * 순서를 맞출 필요는 없습니다 — 문항 번호로 정렬해 합칩니다.
+   */
+  images: { data: string; mediaType?: "image/jpeg" | "image/png" }[];
   /** 철자를 엄격히 볼 것인가. 교육 방침이라 시험 단위로 정합니다. */
   strictSpelling?: boolean;
+  /**
+   * 머리말의 커트라인이 빨간펜에 가려 안 읽힐 때 사람이 넣는 값.
+   * 시험 하나에 한 번만 넣으면 되므로 장마다 입력하는 일이 아닙니다.
+   */
+  cutLineOverride?: string;
 }
 
 export async function POST(req: Request) {
@@ -34,26 +45,39 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "요청 본문을 읽을 수 없습니다." }, { status: 400 });
   }
-  if (!body?.image) {
-    return NextResponse.json({ error: "image가 없습니다." }, { status: 400 });
+  const images = body?.images ?? [];
+  if (!images.length) {
+    return NextResponse.json({ error: "사진이 없습니다." }, { status: 400 });
   }
 
   try {
     const client = anthropic();
-    const image = { mediaType: body.mediaType ?? ("image/jpeg" as const), data: body.image };
+
+    // 장마다 따로 전사합니다. 한 요청에 여러 장을 담아도 **모델 호출은 장당 하나**라야
+    // Vercel의 300초 안에 들어옵니다.
+    const parts = [];
+    const usage = [];
+    for (const im of images) {
+      const r = await transcribe(client, { mediaType: im.mediaType ?? "image/jpeg", data: im.data });
+      parts.push(r.transcript);
+      usage.push(r.usage);
+    }
+    const transcript = mergeTranscripts(parts);
+    if (body.cutLineOverride?.trim()) transcript.sheet.cutLine = body.cutLineOverride.trim();
+
+    const warnings = checkDrift(transcript);
 
     // 전사와 판정을 **따로** 부릅니다. 한 번에 시키면 틀린 답을 정답으로 고쳐 읽습니다.
-    const { transcript, usage: u1 } = await transcribe(client, image);
-    const warnings = checkDrift(transcript);
     const { results, usage: u2 } = await judge(client, transcript, body.strictSpelling ?? false);
-
-    const usage = [u1, u2];
+    usage.push(u2);
     const res: GradeResponse = {
       transcript,
       warnings,
       results,
+      incomplete: isIncomplete(warnings),
+      pages: parts.length,
       usage,
-      costUsd: costUsd(usage, u1.model),
+      costUsd: costUsd(usage, usage[0].model),
     };
     return NextResponse.json(res);
   } catch (e) {
