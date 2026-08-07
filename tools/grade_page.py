@@ -357,7 +357,7 @@ def judge(client, model, transcript, key=None, strict=False, effort="high", thin
 
 # ── 검증 ─────────────────────────────────────────────────────────────────
 
-def check_drift(transcript, key=None, total_override=None):
+def check_drift(transcript, key=None):
     """행 밀림을 잡는다 — 이 방식의 유일한 치명적 실패 모드다.
 
     좌표가 없으므로 세 가지로 교차 확인합니다.
@@ -378,9 +378,7 @@ def check_drift(transcript, key=None, total_override=None):
             warn.append(f"번호가 비었습니다: {missing[:15]}"
                         + (" …" if len(missing) > 15 else ""))
 
-    # 머리말을 가렸다면 AI는 문항 수를 못 읽습니다. 사람이 지정한 값이 항상 우선입니다 —
-    # 조교가 업로드할 때 어차피 고르는 값이고, AI가 읽은 것보다 신뢰할 수 있습니다.
-    total = total_override or sheet.get("printed_total") or 0
+    total = sheet.get("printed_total") or 0
     if total and total != len(items):
         warn.append(f"인쇄된 문항 수 {total} ≠ 전사 {len(items)} — 밀렸거나 빠졌습니다.")
 
@@ -395,7 +393,51 @@ def check_drift(transcript, key=None, total_override=None):
     empty = sum(1 for i in items if not (i.get("prompt") or "").strip())
     if empty:
         warn.append(f"제시어가 비어 있는 문항 {empty}개 — 밀림 검증이 그만큼 약해집니다.")
+
+    warn += _check_prefix(items)
+    warn += _check_language(items)
     return warn
+
+
+def _check_prefix(items):
+    """첫 글자가 인쇄된 문항은 학생 답이 그 글자로 시작해야 합니다.
+
+    사람 입력도 정답표도 필요 없는 검증입니다. 답이 한 줄 밀리면
+    38번의 prefix 'p' 자리에 39번 답 'victim'이 들어와 즉시 어긋납니다.
+    """
+    bad = [i["no"] for i in items
+           if (i.get("prefix") or "").strip() and (i.get("written") or "").strip()
+           and not i["written"].strip().lower().startswith(i["prefix"].strip().lower())]
+    if not bad:
+        return []
+    return [f"인쇄된 첫 글자와 답이 안 맞습니다(밀림 의심): {', '.join(bad[:15])}"
+            + (" …" if len(bad) > 15 else "")]
+
+
+def _check_language(items):
+    """출제 방향과 답의 언어가 맞아야 합니다.
+
+    한 시험지에 '영어→한글'과 '한글→영어'가 섞여 있는 경우가 많은데,
+    그 경계를 넘어 밀리면 ko2en 칸에 한글 답이 들어옵니다. 이것도 공짜 검증입니다.
+    """
+    bad = []
+    for i in items:
+        w = (i.get("written") or "").strip()
+        if not w or len(w) < 2:
+            continue
+        han = _has_hangul(w)
+        if i.get("direction") == "ko2en" and han:
+            bad.append(f"{i['no']}(한글)")
+        elif i.get("direction") == "en2ko" and not han and w.isascii():
+            bad.append(f"{i['no']}(영문)")
+    if not bad:
+        return []
+    return [f"출제 방향과 답의 언어가 다릅니다(밀림 의심): {', '.join(bad[:15])}"
+            + (" …" if len(bad) > 15 else "")]
+
+
+def _has_hangul(s):
+    return any("가" <= c <= "힣" for c in s)
 
 
 def _norm(s):
@@ -485,9 +527,8 @@ def main():
     t.add_argument("--repeat", type=int, default=1, help="같은 사진을 N번 읽어 비결정성을 잰다")
     t.add_argument("--key", help="정답표 JSON — 있으면 제시어 대조로 밀림을 잡는다")
     t.add_argument("--mask-name", action="store_true",
-                   help="전송 전에 머리말(학생 이름)을 자동으로 덮는다")
-    t.add_argument("--total", type=int,
-                   help="이 시험지의 총 문항 수. 머리말을 가리면 AI가 못 읽으므로 사람이 알려준다")
+                   help="머리말을 덮고 보낸다. 반·시험·커트라인·문항 수까지 같이 사라지므로 "
+                        "조교가 그만큼 손으로 넣어야 한다. 기본은 끔")
     t.add_argument("--out")
 
     m = sub.add_parser("marks", help="채점 후 사진 → 선생님 오답 번호")
@@ -512,7 +553,7 @@ def main():
         for r in range(a.repeat):
             data, usages = transcribe(client, a.model, a.image, a.split, a.effort, think,
                                       a.mask_name)
-            warn = check_drift(data, key, a.total)
+            warn = check_drift(data, key)
             if a.repeat > 1:
                 print(f"\n───── 실행 {r+1}/{a.repeat} ─────")
             print_transcript(data, warn, usages, a.model)
