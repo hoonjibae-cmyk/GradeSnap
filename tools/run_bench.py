@@ -97,7 +97,7 @@ def summarize(results, out_dir=None):
     say("|---|---|---:|---:|---:|---:|:--:|:--:|---:|")
     tot_n = tot_agree = tot_missed = tot_strict = drifted = 0
     cost = 0.0
-    excluded = []
+    excluded, tiny = [], []
     for i, r in enumerate(results, 1):
         if r.get("error"):
             say(f"| {i} | (실패) | — | — | — | — | — | — |")
@@ -106,6 +106,10 @@ def summarize(results, out_dir=None):
         title = (s.get("title") or "?")[:26]
         um = c.get("unmatched_marks") or []
         cost += r["cost"]
+        if c["n"] < 25 and not um:
+            # 15문항짜리에서 1개 어긋나면 6.7%p가 움직입니다. 백분율만 보면
+            # 시험지 유형 탓으로 오해하기 쉬워 분모를 같이 보게 만듭니다.
+            tiny.append((i, title, c["n"]))
         if um:
             # 대조가 깨진 장은 합계에 넣지 않습니다. 정렬 실패를 채점 실패로
             # 세면 판정 지표가 조용히 부풀어 결론 전체가 못 믿을 것이 됩니다.
@@ -140,6 +144,16 @@ def summarize(results, out_dir=None):
         say("   **번호 체계가 평평하지 않은 시험지**(절이 나뉘거나 자유 나열)일 가능성이"
             " 큽니다. 12 §12.4의 번호+제시어 정합은 번호가 한 줄로 이어지는"
             " 단어시험을 전제로 설계됐습니다.")
+
+    small = [(i, t, n) for i, t, n in tiny]
+    if small:
+        say("")
+        say("※ **문항이 적은 장의 일치율은 그대로 읽으면 안 됩니다.**"
+            " 어긋남 1개가 움직이는 폭이 큽니다.")
+        for i, t, n in small:
+            say(f"   {i}. {t} — {n}문항, 어긋남 1개당 {100/n:.1f}%p")
+        say("   장별 백분율이 아니라 **문항을 다 합친 합계**로 판단하십시오."
+            " 그래서 위 합계는 장 평균이 아니라 문항 단위입니다.")
 
     say("")
     say("## Phase 1 착수 기준")
