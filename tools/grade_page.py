@@ -508,9 +508,23 @@ def dump(path, obj):
 # ── main ─────────────────────────────────────────────────────────────────
 
 def client_or_die():
-    if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
-        sys.exit("ANTHROPIC_API_KEY가 필요합니다.")
-    return anthropic.Anthropic()
+    """키를 확인하고 클라이언트를 만든다.
+
+    자리 표시자를 그대로 붙여넣는 사고가 실제로 있었습니다. `--dry-run`은 API를
+    안 부르므로 그때는 멀쩡히 돌고, 본 실행에서야 터집니다. 여기서 먼저 잡습니다.
+    """
+    key = (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN") or "").strip()
+    if not key:
+        sys.exit(
+            "ANTHROPIC_API_KEY가 비어 있습니다.\n"
+            "  실행할 때 같은 줄에 붙이십시오 (export는 다음 명령까지 안 남는 경우가 있습니다):\n"
+            "    ANTHROPIC_API_KEY=sk-ant-... python3 tools/run_bench.py --dir 사진폴더 --out bench/")
+    if not key.startswith("sk-ant-"):
+        sys.exit(
+            f"키가 'sk-ant-'로 시작하지 않습니다 (받은 값: {key[:12]!r}…).\n"
+            "  안내문의 '(새로 발급한 키)' 같은 **자리 표시자를 그대로 넣은 것**은 아닌지 확인하십시오.\n"
+            "  console.anthropic.com → API Keys 에서 발급한 실제 문자열이어야 합니다.")
+    return anthropic.Anthropic(api_key=key)
 
 
 def main():
