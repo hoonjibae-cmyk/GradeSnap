@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* 조교가 폰으로, 선생님이 PC로 봅니다. 둘 다 한 화면에서 돌아가야 합니다. */
+html { -webkit-text-size-adjust: 100%; }
+body { @apply bg-slate-50 text-slate-900 antialiased; }

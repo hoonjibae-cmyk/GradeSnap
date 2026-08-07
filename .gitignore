@@ -13,6 +13,9 @@ samples/
 # 의존성 / 빌드
 node_modules/
 .next/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
 dist/
 build/
 __pycache__/
