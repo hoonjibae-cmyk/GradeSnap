@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+⏸ 보류 — 좌표·crop 기반 설계의 도구입니다.
+   docs/12-page-level-grading.md 로 설계가 바뀌면서 쓰지 않습니다.
+   지우지 않고 남겨 둡니다. 되돌릴 경우를 대비한 기록입니다.
+
 GradeSnap · 답안 영역 crop 생성기 (Phase 0)
 
 템플릿 JSON + 답안지 이미지 → 문항별 crop 이미지 + 벤치마크 매니페스트.

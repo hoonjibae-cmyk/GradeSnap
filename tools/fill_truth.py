@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+⏸ 보류 — 좌표·crop 기반 설계의 도구입니다.
+   docs/12-page-level-grading.md 로 설계가 바뀌면서 쓰지 않습니다.
+   지우지 않고 남겨 둡니다. 되돌릴 경우를 대비한 기록입니다.
+
 GradeSnap · 벤치마크 라벨 채우기 (Phase 0.2)
 
 벤치마크의 진짜 비용은 API가 아니라 **라벨링**입니다.

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""문법 백지 TEST 전수 진단 — 숨은 정답 / 정답지 차분 중 나은 쪽을 택한다."""
+"""
+⏸ 보류 — 좌표·crop 기반 설계의 도구입니다.
+   docs/12-page-level-grading.md 로 설계가 바뀌면서 쓰지 않습니다.
+   지우지 않고 남겨 둡니다. 되돌릴 경우를 대비한 기록입니다.
+
+문법 백지 TEST 전수 진단 — 숨은 정답 / 정답지 차분 중 나은 쪽을 택한다."""
 import os, re, sys, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fitz

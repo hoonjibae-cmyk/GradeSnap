@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""문법 백지 TEST 세트 → exam_template JSON 일괄 생성.
+"""
+⏸ 보류 — 좌표·crop 기반 설계의 도구입니다.
+   docs/12-page-level-grading.md 로 설계가 바뀌면서 쓰지 않습니다.
+   지우지 않고 남겨 둡니다. 되돌릴 경우를 대비한 기록입니다.
+
+문법 백지 TEST 세트 → exam_template JSON 일괄 생성.
 
 빈칸(칸) 하나를 문항 하나로 만든다. 이 학원의 컷트라인이 '-12칸'처럼
 빈칸 개수 기준이므로 채점 단위가 곧 빈칸이다.
