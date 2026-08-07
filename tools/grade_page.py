@@ -248,23 +248,28 @@ def bands(path, n, overlap=0.12):
     return out
 
 
-def call(client, model, system, user_text, images, schema, effort="high"):
+def call(client, model, system, user_text, images, schema, effort="high", thinking=True):
     content = [{"type": "image",
                 "source": {"type": "base64", "media_type": "image/png", "data": encode(im)}}
                for im in images]
     content.append({"type": "text", "text": user_text})
 
+    params = {
+        "model": model,
+        "max_tokens": 16000,
+        "system": system,
+        "messages": [{"role": "user", "content": content}],
+        "output_config": {"effort": effort,
+                          "format": {"type": "json_schema", "schema": schema}},
+    }
+    # 밀림 검증과 채점 마크 구분은 따져 봐야 하는 일이라 기본은 사고 과정을 켭니다.
+    # 다만 **사고 토큰이 출력 토큰으로 과금**되어 장당 비용의 최대 변수입니다.
+    # 껐을 때 품질이 얼마나 떨어지는지 재서 정할 값이라 스위치로 둡니다.
+    if not thinking:
+        params["thinking"] = {"type": "disabled"}
+
     t0 = time.perf_counter()
-    msg = client.messages.create(
-        model=model,
-        max_tokens=16000,
-        system=system,
-        messages=[{"role": "user", "content": content}],
-        # 밀림 검증과 채점 마크 구분은 따져 봐야 하는 일이라 사고 과정을 켭니다.
-        thinking={"type": "adaptive"},
-        output_config={"effort": effort,
-                       "format": {"type": "json_schema", "schema": schema}},
-    )
+    msg = client.messages.create(**params)
     text = next(b.text for b in msg.content if b.type == "text")
     return json.loads(text), {
         "latency_ms": round((time.perf_counter() - t0) * 1000),
@@ -283,12 +288,12 @@ def cost_usd(usages, model):
 
 # ── 단계 ─────────────────────────────────────────────────────────────────
 
-def transcribe(client, model, path, split=1, effort="high"):
+def transcribe(client, model, path, split=1, effort="high", thinking=True):
     parts = bands(path, split)
     if split == 1:
         data, u = call(client, model, TRANSCRIBE_SYSTEM,
                        "이 답안지의 모든 문항을 전사하십시오. 빈칸도 빠짐없이 포함하십시오.",
-                       parts, TRANSCRIBE_SCHEMA, effort)
+                       parts, TRANSCRIBE_SCHEMA, effort, thinking)
         return data, [u]
 
     # 나눠 보낸 뒤 번호로 합칩니다. 겹치는 띠에서 같은 문항이 두 번 나오면
@@ -299,7 +304,7 @@ def transcribe(client, model, path, split=1, effort="high"):
                        f"답안지를 위에서부터 {len(parts)}등분한 것 중 {i}번째 조각입니다. "
                        f"이 조각에 **온전히 보이는** 문항만 전사하십시오. "
                        f"잘려서 일부만 보이는 문항은 빼십시오.",
-                       [part], TRANSCRIBE_SCHEMA, effort)
+                       [part], TRANSCRIBE_SCHEMA, effort, thinking)
         usages.append(u)
         sheet = sheet or data["sheet"]
         for it in data["items"]:
@@ -315,13 +320,13 @@ def _numkey(s):
     return (int(m.group()) if m else 10**9, s)
 
 
-def read_marks(client, model, path, effort="high"):
+def read_marks(client, model, path, effort="high", thinking=True):
     return call(client, model, MARKS_SYSTEM,
                 "이 답안지에서 선생님이 오답으로 표시한 문항 번호를 모두 찾으십시오.",
-                [Image.open(path)], MARKS_SCHEMA, effort)
+                [Image.open(path)], MARKS_SCHEMA, effort, thinking)
 
 
-def judge(client, model, transcript, key=None, strict=False, effort="high"):
+def judge(client, model, transcript, key=None, strict=False, effort="high", thinking=True):
     items = transcript["items"]
     payload = [{"no": i["no"], "prompt": i["prompt"], "direction": i["direction"],
                 "written": i["written"], "blank": i["blank"], "legible": i["legible"]}
@@ -332,7 +337,7 @@ def judge(client, model, transcript, key=None, strict=False, effort="high"):
         text += ("\n\n아래가 정답표입니다. 이것을 기준으로 판정하십시오.\n"
                  + json.dumps(key, ensure_ascii=False, indent=1))
     system = JUDGE_SYSTEM + (STRICT_ON if strict else STRICT_OFF)
-    return call(client, model, system, text, [], JUDGE_SCHEMA, effort)
+    return call(client, model, system, text, [], JUDGE_SCHEMA, effort, thinking)
 
 
 # ── 검증 ─────────────────────────────────────────────────────────────────
@@ -414,7 +419,9 @@ def print_transcript(t, warn, usages, model):
         print(f"⚠️  {w}")
     c = cost_usd(usages, model)
     lat = sum(u["latency_ms"] for u in usages)
-    print(f"\n호출 {len(usages)}회 · {lat/1000:.1f}s · ${c:.4f}")
+    tok = sum(u["out_tok"] for u in usages)
+    print(f"\n호출 {len(usages)}회 · {lat/1000:.1f}s · ${c:.4f} · 출력 {tok:,}토큰")
+    print(f"   (2,200장/월이면 ${c*2200:,.0f}, 6,600장/월이면 ${c*6600:,.0f})")
 
 
 def print_compare(cmp_, marks):
@@ -451,6 +458,8 @@ def main():
     ap = argparse.ArgumentParser(description="답안지 사진 한 장을 통째로 채점한다")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+    ap.add_argument("--no-thinking", action="store_true",
+                    help="사고 과정을 끈다. 출력 토큰이 크게 줄어 장당 비용이 몇 배 싸진다")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     t = sub.add_parser("transcribe", help="채점 전 사진 → 문항별 전사")
@@ -473,12 +482,13 @@ def main():
 
     a = ap.parse_args()
     client = client_or_die()
+    think = not a.no_thinking
     key = json.load(open(a.key, encoding="utf-8")) if getattr(a, "key", None) else None
 
     if a.cmd == "transcribe":
         runs = []
         for r in range(a.repeat):
-            data, usages = transcribe(client, a.model, a.image, a.split, a.effort)
+            data, usages = transcribe(client, a.model, a.image, a.split, a.effort, think)
             warn = check_drift(data, key)
             if a.repeat > 1:
                 print(f"\n───── 실행 {r+1}/{a.repeat} ─────")
@@ -489,7 +499,7 @@ def main():
         dump(a.out, runs[0] if a.repeat == 1 else {"runs": runs})
 
     elif a.cmd == "marks":
-        data, u = read_marks(client, a.model, a.image, a.effort)
+        data, u = read_marks(client, a.model, a.image, a.effort, think)
         print(f"\n채점함 표시: {data['convention']['check_mark']}")
         print(f"오답 표시  : {data['convention']['wrong_mark']}")
         print(f"근거: {data['convention']['reasoning']}")
@@ -500,7 +510,7 @@ def main():
 
     elif a.cmd == "judge":
         transcript = json.load(open(a.transcript, encoding="utf-8"))
-        data, u = judge(client, a.model, transcript, key, a.strict, a.effort)
+        data, u = judge(client, a.model, transcript, key, a.strict, a.effort, think)
         wrong = [r for r in data["results"] if not r["correct"]]
         print(f"\n오답 {len(wrong)}/{len(data['results'])}")
         for r in wrong:
