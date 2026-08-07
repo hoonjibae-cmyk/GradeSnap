@@ -219,6 +219,17 @@ Phase 1을 다 만든 뒤에 버리는 것보다 지금 버리는 편이 훨씬 
 막힌 지점이 사라집니다.
 
 ```bash
+# 폴더 하나로 전부 — 짝짓기부터 집계까지
+python3 tools/run_bench.py --dir samples/ --dry-run   # 짝짓기만 확인 (돈 안 씀)
+python3 tools/run_bench.py --dir samples/ --out bench/
+```
+
+짝짓기는 사람이 안 합니다. 파일명을 정렬해 두 장씩 묶고, **둘 중 빨간펜이 많은 쪽을
+'채점 후'로** 봅니다. 파일명을 고칠 필요도, 순서를 맞출 필요도 없습니다.
+
+단계를 따로 돌리려면:
+
+```bash
 python3 tools/grade_page.py transcribe --image before.jpg --out t.json
 python3 tools/grade_page.py marks      --image after.jpg  --out m.json
 python3 tools/grade_page.py judge --transcript t.json --marks m.json
@@ -314,6 +325,21 @@ python3 tools/grade_page.py judge --transcript t.json --marks m.json
 단어를 실재 단어로 고치지 않았습니다.** 우리가 가장 걱정한 "고쳐 읽기"입니다.
 다만 **인쇄 활자 한 건이므로 증거로는 약합니다.** 고쳐 읽고 싶은 유혹은 애매한
 손글씨에서 훨씬 강해집니다. 실물로 다시 재야 합니다.
+
+### 채점 마크 판독이 가장 걱정한 곳이었는데, 통과했습니다
+
+합성 '채점 후' 사진에 **50문항 전부에 빨간 동그라미**를 치고 **오답 3개에만 사선**을
+그어 [12.5](#125-채점-마크-판독--확인-표시와-오답-표시를-구분해야-합니다)의 함정을
+그대로 재현했습니다. 결과:
+
+> 채점함 표시: 모든 문항 번호에 빨간 동그라미
+> 오답 표시: 번호를 가로지르는 긴 빨간 사선
+> 근거: 번호 동그라미는 50문항 전부에 있어 채점 표시이고, 긴 사선은 16·39·46
+> 세 문항에만 있어 오답 표시로 판단됨.
+> **읽어낸 오답: 16, 39, 46** ← 정확히 일치
+
+동그라미를 오답으로 읽었다면 결과가 통째로 뒤집혔을 것입니다.
+**소수에만 붙은 표시를 오답으로 본다**는 규칙이 작동했습니다.
 
 ### 사고 과정(thinking)은 이 작업에서 공짜였습니다
 

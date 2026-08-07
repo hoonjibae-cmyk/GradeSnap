@@ -60,7 +60,8 @@ AI가 페이지 전체를 문항별로 전사 (번호 · 인쇄된 제시어 · 
 
 | 도구 | 용도 | |
 |---|---|---|
-| [`tools/grade_page.py`](tools/grade_page.py) | **사진 한 장을 통째로 채점** — 전사 / 마크판독 / 정오판정 | ⭐ |
+| [`tools/run_bench.py`](tools/run_bench.py) | **폴더 하나로 벤치마크 전체 실행** — 짝짓기·채점·집계 | ⭐ |
+| [`tools/grade_page.py`](tools/grade_page.py) | 사진 한 장을 통째로 채점 — 전사 / 마크판독 / 정오판정 | ⭐ |
 | [`tools/mask_header.py`](tools/mask_header.py) | 머리말(학생 이름)을 덮음. 기본 꺼짐 — [12 §12.9](docs/12-page-level-grading.md) | 선택 |
 | [`tools/extract_hidden.py`](tools/extract_hidden.py) | 시험지에 흰색으로 숨겨진 정답을 추출 (문법 백지 TEST) | |
 | [`tools/pdf_diff_key.py`](tools/pdf_diff_key.py) | 시험지·정답지를 차분해 정답표 추출 | |
