@@ -76,7 +76,7 @@ def run_pair(client, args, pair):
     m, um = G.read_marks(client, args.model, pair["after"], args.effort, think,
                          item_numbers=[i["no"] for i in t["items"]])
     j, uj = G.judge(client, args.model, t, None, args.strict, args.effort, think)
-    cmp_ = G.compare(j, m)
+    cmp_ = G.compare(j, m, t["sheet"].get("cut_line"))
     return {
         "pair": pair, "sheet": t["sheet"], "n_items": len(t["items"]),
         "warn": warn, "marks": m, "compare": cmp_,
@@ -102,9 +102,10 @@ def summarize(results, out_dir=None):
 
     print("=" * 78)
     say("## 결과 — 선생님 채점과의 일치율")
-    say("| # | 시험지 | 문항 | 일치율 | 우리만 오답 | **놓친 오답** | 대조불가 | 밀림 | 비용 |")
-    say("|---|---|---:|---:|---:|---:|:--:|:--:|---:|")
+    say("| # | 시험지 | 문항 | **PASS/FAIL** | 경계선 | 일치율 | 우리만 오답 | 놓친 오답 | 대조불가 | 밀림 |")
+    say("|---|---|---:|:--:|:--:|---:|---:|---:|:--:|:--:|")
     tot_n = tot_agree = tot_missed = tot_strict = drifted = 0
+    v_match = v_total = near = 0
     cost = 0.0
     excluded, tiny = [], []
     for i, r in enumerate(results, 1):
@@ -127,10 +128,18 @@ def summarize(results, out_dir=None):
             tot_n += c["n"]; tot_agree += c["agree"]
             tot_missed += len(c["theirs_only"]); tot_strict += len(c["ours_only"])
             drifted += 1 if _has_drift(r["warn"]) else 0
-        say(f"| {i} | {title} | {c['n']} | {c['rate']*100:.1f}%{'*' if um else ''} "
-              f"| {len(c['ours_only'])} | **{len(c['theirs_only'])}** "
-              f"| {len(um) or '–'} | {'⚠️' if _has_drift(r['warn']) else ('ℹ️' if r['warn'] else '–')}"
-              f" | ${r['cost']:.3f} |")
+            if c.get("verdict_match") is not None:
+                v_total += 1
+                v_match += 1 if c["verdict_match"] else 0
+            near += 1 if c.get("near_boundary") else 0
+        vm = c.get("verdict_match")
+        vcell = ("–" if vm is None else
+                 f"{'✅' if vm else '❌'} {c.get('ours_verdict','?')[:1].upper()}")
+        say(f"| {i} | {title} | {c['n']} | {vcell} "
+              f"| {'🔶' if c.get('near_boundary') else '–'} "
+              f"| {c['rate']*100:.1f}%{'*' if um else ''} "
+              f"| {len(c['ours_only'])} | {len(c['theirs_only'])} "
+              f"| {len(um) or '–'} | {'⚠️' if _has_drift(r['warn']) else ('ℹ️' if r['warn'] else '–')} |")
 
     if not tot_n:
         say("")
@@ -140,8 +149,11 @@ def summarize(results, out_dir=None):
         return
     rate = tot_agree / tot_n
     missed = tot_missed / tot_n
-    say(f"| | **합계** | {tot_n} | **{rate*100:.1f}%** | {tot_strict} "
-          f"| **{tot_missed}** | – | {drifted}장 | ${cost:.2f} |")
+    vrate = v_match / v_total if v_total else None
+    say(f"| | **합계** | {tot_n} "
+        f"| **{f'{v_match}/{v_total}' if v_total else '–'}** | {near}장 "
+        f"| {rate*100:.1f}% | {tot_strict} | {tot_missed} | – | {drifted}장 |")
+    say(f"\n총 ${cost:.2f}")
 
     if excluded:
         say("")
@@ -167,17 +179,27 @@ def summarize(results, out_dir=None):
 
     say("")
     say("## Phase 1 착수 기준")
+    say("**학생에게 일어나는 일은 PASS/FAIL 하나입니다** — 집에 가느냐, 남아서 재시험이냐.")
+    say("문항 한둘이 어긋나도 커트라인에서 멀면 결정은 안 바뀝니다. 그래서 결정을 먼저 봅니다.")
+    say("")
     for label, val, ok in (
-        ("선생님 채점 일치율 ≥ 95%", f"{rate*100:.1f}%", rate >= 0.95),
-        ("놓친 오답 < 1%", f"{missed*100:.2f}% ({tot_missed}건)", missed < 0.01),
-        ("밀림 경보 0장", f"{drifted}장", drifted == 0),
+        ("① PASS/FAIL 일치 ≥ 97%",
+         f"{vrate*100:.1f}% ({v_match}/{v_total})" if v_total else "측정 불가(커트라인 미판독)",
+         (vrate is not None and vrate >= 0.97)),
+        ("② 경계선 검수율 ≤ 25%", f"{near/len(results)*100:.0f}% ({near}/{len(results)}장)",
+         near <= len(results) * 0.25),
+        ("③ 오답 목록 정확도 — 놓친 오답 ≤ 3%",
+         f"{missed*100:.2f}% ({tot_missed}건)", missed <= 0.03),
+        ("④ 밀림 경보 0장", f"{drifted}장", drifted == 0),
     ):
-        say(f"  {'✅' if ok else '❌'} {label:<26} → {val}")
+        say(f"  {'✅' if ok else '❌'} {label:<30} → {val}")
 
     say("")
-    say("※ '우리만 오답'은 대부분 **선생님의 철자 관대 채점**입니다"
-          " (12 §12.6). 채점 규칙으로 흡수할 수 있어 치명적이지 않습니다.")
-    say("   '놓친 오답'이 진짜 손해입니다 — 선생님은 틀렸다는데 우리가 맞다고 한 것입니다.")
+    say("※ ①이 본 지표입니다. ③은 **오답 목록**(뭘 다시 외울지)의 정확도라 결정과 요구치가")
+    say("   다릅니다 — 틀려도 학생이 단어 한둘을 덜 복습할 뿐입니다.")
+    say("※ ②는 커트라인 ±2 안에 든 답안지 비율입니다. 이 장들만 사람이 보면")
+    say("   문항 오차가 결정을 뒤집는 경우를 대부분 막습니다. **정확도가 아니라 운영 비용입니다.**")
+    say("※ '우리만 오답'은 대부분 **선생님의 철자 관대 채점**입니다(12 §12.6).")
 
     detail = [(i, r) for i, r in enumerate(results, 1)
               if not r.get("error") and (r["compare"]["theirs_only"] or r["warn"])]

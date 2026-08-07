@@ -498,7 +498,29 @@ def _norm(s):
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", s or "")).lower()
 
 
-def compare(judged, marks):
+def parse_cut(text, n_items):
+    """머리말의 커트라인 표기 → 허용 오답 개수. 못 읽으면 None.
+
+    '-8 까지 pass', '( -10%까지 PASS )', '커트라인 -7개', '/20(컷 -5)' 등
+    실제 시험지에 인쇄된 표기를 그대로 읽습니다.
+    """
+    if not text or not n_items:
+        return None
+    m = re.search(r"-\s*(\d+(?:\.\d+)?)\s*(%|퍼센트)?", str(text))
+    if not m:
+        return None
+    v = float(m.group(1))
+    return int(n_items * v / 100) if m.group(2) else int(v)
+
+
+def verdict(n_wrong, cut):
+    """오답 개수 → PASS/FAIL. 커트라인을 못 읽으면 None."""
+    if cut is None:
+        return None
+    return "pass" if n_wrong <= cut else "fail"
+
+
+def compare(judged, marks, cut_line=None, boundary=2):
     """우리 채점과 선생님 채점을 맞춰 봅니다. 이게 벤치마크의 핵심 지표입니다.
 
     **정렬 실패를 채점 실패로 세지 않습니다.** 마크 판독이 문항 번호가 아니라
@@ -513,7 +535,25 @@ def compare(judged, marks):
     unmatched = sorted(raw - known)          # 전사 문항에 붙일 수 없는 마크
 
     agree = len(known) - len(ours ^ theirs)
+
+    # ── 실제 결정 단위는 문항이 아니라 **이 답안지의 PASS/FAIL**입니다.
+    # 집에 가느냐 남아서 재시험을 보느냐가 학생에게 일어나는 전부입니다.
+    # 문항 한둘이 어긋나도 커트라인에서 멀면 결정은 안 바뀝니다.
+    cut = parse_cut(cut_line, len(known))
+    ours_v = verdict(len(ours), cut)
+    theirs_v = (marks.get("pass_fail") or None)
+    if theirs_v not in ("pass", "fail"):
+        theirs_v = verdict(len(theirs), cut)      # 선생님 표기가 없으면 마크 수로 대신
+    # 커트라인 근처면 문항 오차 하나가 결정을 뒤집습니다. 그 장만 사람이 봅니다.
+    near = cut is not None and abs(len(ours) - cut) <= boundary
+
     return {
+        "cut": cut,
+        "ours_verdict": ours_v,
+        "theirs_verdict": theirs_v,
+        "verdict_match": None if (ours_v is None or theirs_v is None) else ours_v == theirs_v,
+        "near_boundary": near,
+        "margin": None if cut is None else len(ours) - cut,
         "n": len(known),
         "agree": agree,
         "rate": agree / len(known) if known else 0.0,
