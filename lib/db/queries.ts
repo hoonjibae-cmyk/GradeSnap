@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
-import { toItemRows, type ItemRow, type SheetPageRow, type SheetRow, type StaffRow } from "./schema";
+import { toItemRows, type ItemRow, type SheetPageRow, type SheetRow, type StaffRow, type WrongItemRow } from "./schema";
 
 /**
  * DB에 닿는 곳은 전부 여기입니다. 화면에서 직접 `.from('sheets')`를 부르지
@@ -118,6 +118,19 @@ export async function sheetsOn(db: SupabaseClient, day: string): Promise<SheetRo
     await db.from("sheets").select("*").gte("created_at", from).lte("created_at", to).order("created_at", { ascending: false }),
     "접수 목록",
   ) as SheetRow[];
+}
+
+/**
+ * 그날의 오답 전부. `wrong_items` 뷰는 **선생님이 고친 값**으로 걸러집니다.
+ *
+ * 확정 여부로 거르지 않습니다 — 아직 확정 안 된 답안지의 오답도 보여야
+ * "명단이 아직 덜 됐다"를 알 수 있습니다. 거르는 것은 화면이 합니다.
+ */
+export async function wrongItemsOn(db: SupabaseClient, day: string): Promise<WrongItemRow[]> {
+  return ok(
+    await db.from("wrong_items").select("*").eq("received_on", day).order("seq"),
+    "오답 목록",
+  ) as WrongItemRow[];
 }
 
 export async function getSheet(db: SupabaseClient, id: string): Promise<SheetRow> {

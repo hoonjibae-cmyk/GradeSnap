@@ -112,6 +112,22 @@ export interface ItemRow {
 /** 저장할 때 쓰는 모양. 생성 칼럼(`final_correct`·`overturned`)은 빠집니다. */
 export type ItemInsert = Omit<ItemRow, "id" | "final_correct" | "overturned">;
 
+/** `wrong_items` 뷰 한 줄. 선생님이 고친 값이 반영된 오답입니다. */
+export interface WrongItemRow {
+  sheet_id: string;
+  received_on: string;
+  class_name: string;
+  student_name: string;
+  title: string;
+  seq: number;
+  no: string;
+  prompt: string;
+  written: string;
+  expected: string;
+  note: string;
+  overturned: boolean;
+}
+
 /** 사람이 반드시 봐야 하는 답안지. 목록에서 이걸로 셉니다. */
 export function needsReview(s: SheetRow): boolean {
   if (s.status !== "graded") return false;

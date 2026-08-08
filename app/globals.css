@@ -3,3 +3,14 @@
 /* 조교가 폰으로, 선생님이 PC로 봅니다. 둘 다 한 화면에서 돌아가야 합니다. */
 html { -webkit-text-size-adjust: 100%; }
 body { @apply bg-slate-50 text-slate-900 antialiased; }
+
+/*
+  명단은 종이로 나갑니다 — 재시험 학생을 부르는 것은 결국 인쇄물이거나
+  칠판입니다. 화면의 조작 요소는 종이에 남을 이유가 없습니다.
+*/
+@media print {
+  .no-print { display: none !important; }
+  body { @apply bg-white; }
+  main { max-width: none !important; padding: 0 !important; }
+  .print-block { break-inside: avoid; }
+}

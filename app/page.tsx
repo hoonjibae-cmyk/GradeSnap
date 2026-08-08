@@ -112,6 +112,9 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   return (
     <main className="mx-auto max-w-3xl p-5 pb-24">
       <Bar db={db} staff={staff}>
+        <a href="/roster" className="font-medium text-slate-700 underline">
+          명단
+        </a>
         <a href="/quick" className="text-slate-500 underline">
           빠른 시험
         </a>
