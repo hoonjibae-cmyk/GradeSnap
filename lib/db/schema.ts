@@ -1,7 +1,7 @@
 /**
  * `supabase/migrations`의 표를 TypeScript로 옮긴 것입니다.
  *
- * Supabase의 타입 생성기를 쓰지 않고 손으로 씁니다. 표가 여덟 개도 안 되고,
+ * Supabase의 타입 생성기를 쓰지 않고 손으로 씁니다. 표가 다섯 개도 안 되고,
  * **주석이 스키마의 절반**이라 생성된 파일로 대체되면 근거가 사라집니다.
  * 마이그레이션을 고치면 여기도 같이 고쳐야 합니다.
  */
@@ -9,6 +9,7 @@
 import type { Direction, Item, JudgeResult, Sheet as SheetHead, Usage, Verdict, Warning } from "@/lib/grading/types";
 
 export type Role = "assistant" | "teacher" | "admin";
+
 /**
  * uploading → queued → running → graded → confirmed. 실패하면 failed.
  *
@@ -24,29 +25,30 @@ export interface StaffRow {
   created_at: string;
 }
 
-export interface ExamRow {
-  id: string;
-  title: string;
-  class_name: string;
-  exam_date: string;
-  /** 인쇄 표기 그대로. null이면 시험지 머리말에서 읽습니다. */
-  cut_line: string | null;
-  strict_spelling: boolean;
-  status: "open" | "closed";
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
+/**
+ * 답안지 한 벌 — **접수의 단위이자 채점의 단위**입니다.
+ *
+ * 시험 표가 따로 없습니다. 같은 반이라도 학생마다 보는 시험이 달라서,
+ * 묶을 것이 없기 때문입니다. 시험 이름은 머리말에서 읽어 `title`에 둡니다.
+ */
 export interface SheetRow {
   id: string;
-  exam_id: string;
+  /** 반. 조교가 한 번 골라두면 다음 학생부터 그대로 씁니다. 빈 값이어도 됩니다. */
+  class_name: string;
+  /** 시험 이름. 머리말에서 읽습니다. */
+  title: string;
   student_name: string;
+  /** 커트라인 직접 입력. 머리말이 빨간펜에 가렸을 때만 씁니다. */
+  cut_line: string | null;
+  strict_spelling: boolean;
+  received_by: string | null;
+
   status: SheetStatus;
   attempts: number;
   claimed_at: string | null;
   claimed_by: string | null;
   error: string | null;
+
   transcript: { sheet: SheetHead; items: Item[] } | null;
   warnings: Warning[];
   printed_total: number | null;
@@ -60,6 +62,7 @@ export interface SheetRow {
   token_usage: Usage[] | null;
   cost_usd: number | null;
   graded_at: string | null;
+
   final_verdict: Verdict | null;
   confirmed_by: string | null;
   confirmed_at: string | null;
@@ -106,23 +109,14 @@ export interface ItemRow {
   overturned: boolean;
 }
 
-export interface ExamProgressRow {
-  exam_id: string;
-  total: number;
-  /** 조교가 아직 올리는 중 */
-  uploading: number;
-  /** 기계가 할 차례 */
-  pending: number;
-  graded: number;
-  confirmed: number;
-  failed: number;
-  /** 경계선·밀림·판정 보류 — **사람이 반드시 봐야 하는 것** */
-  needs_review: number;
-  cost_usd: number;
-}
-
 /** 저장할 때 쓰는 모양. 생성 칼럼(`final_correct`·`overturned`)은 빠집니다. */
 export type ItemInsert = Omit<ItemRow, "id" | "final_correct" | "overturned">;
+
+/** 사람이 반드시 봐야 하는 답안지. 목록에서 이걸로 셉니다. */
+export function needsReview(s: SheetRow): boolean {
+  if (s.status !== "graded") return false;
+  return Boolean(s.near_boundary) || s.verdict === null || (s.warnings ?? []).some((w) => w.level === "drift");
+}
 
 /**
  * 전사 결과와 판정 결과를 문항 행으로 붙입니다.
@@ -155,4 +149,9 @@ export function toItemRows(sheetId: string, items: Item[], results: JudgeResult[
       reviewed_at: null,
     };
   });
+}
+
+/** 저장된 문항 행에서 판정 결과를 되살립니다. 커트라인만 다시 넣어 셀 때 씁니다. */
+export function toJudgeResults(rows: Pick<ItemRow, "no" | "correct" | "expected" | "note">[]): JudgeResult[] {
+  return rows.map((r) => ({ no: r.no, correct: r.correct ?? false, expected: r.expected, note: r.note }));
 }

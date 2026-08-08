@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
-import { toItemRows, type ExamProgressRow, type ExamRow, type SheetPageRow, type SheetRow, type StaffRow } from "./schema";
+import { toItemRows, type ItemRow, type SheetPageRow, type SheetRow, type StaffRow } from "./schema";
 
 /**
  * DB에 닿는 곳은 전부 여기입니다. 화면에서 직접 `.from('sheets')`를 부르지
@@ -29,77 +29,51 @@ export async function me(db: SupabaseClient): Promise<StaffRow | null> {
 }
 
 // ---------------------------------------------------------------------------
-// 시험
-// ---------------------------------------------------------------------------
-
-export interface NewExam {
-  title: string;
-  className: string;
-  examDate: string;
-  /** 인쇄 표기 그대로. 비우면 시험지 머리말에서 읽습니다. */
-  cutLine: string;
-  strictSpelling: boolean;
-}
-
-export async function createExam(db: SupabaseClient, e: NewExam): Promise<ExamRow> {
-  const { data: u } = await db.auth.getUser();
-  return ok(
-    await db
-      .from("exams")
-      .insert({
-        title: e.title,
-        class_name: e.className,
-        exam_date: e.examDate,
-        cut_line: e.cutLine.trim() || null,
-        strict_spelling: e.strictSpelling,
-        created_by: u.user?.id ?? null,
-      })
-      .select()
-      .single(),
-    "시험 만들기",
-  ) as ExamRow;
-}
-
-export async function listExams(db: SupabaseClient, limit = 50): Promise<ExamRow[]> {
-  return ok(
-    await db.from("exams").select("*").order("exam_date", { ascending: false }).order("created_at", { ascending: false }).limit(limit),
-    "시험 목록",
-  ) as ExamRow[];
-}
-
-export async function getExam(db: SupabaseClient, id: string): Promise<ExamRow> {
-  return ok(await db.from("exams").select("*").eq("id", id).single(), "시험 불러오기") as ExamRow;
-}
-
-export async function progress(db: SupabaseClient, examId: string): Promise<ExamProgressRow> {
-  return ok(await db.from("exam_progress").select("*").eq("exam_id", examId).single(), "진행 상황") as ExamProgressRow;
-}
-
-// ---------------------------------------------------------------------------
-// 답안지 올리기
+// 접수
 // ---------------------------------------------------------------------------
 
 export const BUCKET = "sheets";
 
+export interface Intake {
+  /** 반. 안 골라도 됩니다. 고르면 조교 화면에 남아 다음 학생에도 그대로 붙습니다. */
+  className: string;
+  /** 머리말이 가려 커트라인이 안 읽힐 때만. 보통 비웁니다. */
+  cutLine: string;
+  strictSpelling: boolean;
+}
+
 /**
- * 한 학생분을 올립니다. **순서가 중요합니다.**
+ * 한 학생분을 접수합니다. **순서가 중요합니다.**
  *
  * 1. 행을 `uploading`으로 만듭니다 (사진 행이 가리킬 대상이 필요하므로)
  * 2. 사진을 스토리지에 올립니다
  * 3. 사진 행을 만듭니다
- * 4. 그제서야 `queued`로 바꿉니다 ← 큐가 여기서부터 집어갑니다
+ * 4. 그제서야 `queued`로 바꿉니다 ← 여기서부터 채점 대상입니다
  *
  * 중간에 끊기면 `uploading`인 채로 남습니다. 큐가 안 건드리므로 안전하고,
- * 화면에서 "올리다 만 것"으로 보여 지우면 됩니다.
+ * 화면에서 "올리는 중"으로 보여 지우면 됩니다.
  */
-export async function uploadSheet(db: SupabaseClient, examId: string, images: PreparedImage[]): Promise<SheetRow> {
+export async function intake(db: SupabaseClient, images: PreparedImage[], opts: Intake): Promise<SheetRow> {
   if (!images.length) throw new Error("사진이 없습니다.");
+  const { data: u } = await db.auth.getUser();
 
-  const sheet = ok(await db.from("sheets").insert({ exam_id: examId }).select().single(), "답안지 만들기") as SheetRow;
+  const sheet = ok(
+    await db
+      .from("sheets")
+      .insert({
+        class_name: opts.className.trim(),
+        cut_line: opts.cutLine.trim() || null,
+        strict_spelling: opts.strictSpelling,
+        received_by: u.user?.id ?? null,
+      })
+      .select()
+      .single(),
+    "접수",
+  ) as SheetRow;
 
   const pages: Omit<SheetPageRow, "id" | "created_at" | "purged_at">[] = [];
   for (const [idx, img] of images.entries()) {
-    const path = `${examId}/${sheet.id}/${idx}.jpg`;
+    const path = `${sheet.id}/${idx}.jpg`;
     const up = await db.storage.from(BUCKET).upload(path, base64ToBlob(img.base64, img.mediaType), {
       contentType: img.mediaType,
       upsert: true,
@@ -119,7 +93,10 @@ export async function uploadSheet(db: SupabaseClient, examId: string, images: Pr
   const ins = await db.from("sheet_pages").insert(pages);
   if (ins.error) throw new Error(`사진 기록: ${ins.error.message}`);
 
-  return ok(await db.from("sheets").update({ status: "queued" }).eq("id", sheet.id).select().single(), "대기열에 넣기") as SheetRow;
+  return ok(
+    await db.from("sheets").update({ status: "queued" }).eq("id", sheet.id).select().single(),
+    "채점 걸기",
+  ) as SheetRow;
 }
 
 function base64ToBlob(b64: string, type: string): Blob {
@@ -129,14 +106,29 @@ function base64ToBlob(b64: string, type: string): Blob {
   return new Blob([buf], { type });
 }
 
-export async function listSheets(db: SupabaseClient, examId: string): Promise<SheetRow[]> {
+// ---------------------------------------------------------------------------
+// 목록
+// ---------------------------------------------------------------------------
+
+/** 그날 접수된 것 전부. 조교 둘이 같은 화면을 봅니다 — 남의 것도 보입니다. */
+export async function sheetsOn(db: SupabaseClient, day: string): Promise<SheetRow[]> {
+  const from = `${day}T00:00:00`;
+  const to = `${day}T23:59:59.999`;
   return ok(
-    await db.from("sheets").select("*").eq("exam_id", examId).order("created_at", { ascending: true }),
-    "답안지 목록",
+    await db.from("sheets").select("*").gte("created_at", from).lte("created_at", to).order("created_at", { ascending: false }),
+    "접수 목록",
   ) as SheetRow[];
 }
 
-/** 올리다 만 것을 지웁니다. 사진 행은 FK로 같이 사라집니다. */
+export async function getSheet(db: SupabaseClient, id: string): Promise<SheetRow> {
+  return ok(await db.from("sheets").select("*").eq("id", id).single(), "답안지") as SheetRow;
+}
+
+export async function itemsOf(db: SupabaseClient, sheetId: string): Promise<ItemRow[]> {
+  return ok(await db.from("items").select("*").eq("sheet_id", sheetId).order("seq"), "문항") as ItemRow[];
+}
+
+/** 올리다 만 것, 실패한 것을 지웁니다. 사진 행은 FK로 같이 사라집니다. */
 export async function deleteSheet(db: SupabaseClient, sheet: SheetRow): Promise<void> {
   const paths = ok(
     await db.from("sheet_pages").select("storage_path").eq("sheet_id", sheet.id),
@@ -147,16 +139,30 @@ export async function deleteSheet(db: SupabaseClient, sheet: SheetRow): Promise<
   if (res.error) throw new Error(`답안지 지우기: ${res.error.message}`);
 }
 
+/** 실패한 것을 사람이 보고 다시 돌립니다. `attempts`도 0으로 되돌립니다. */
+export async function retrySheet(db: SupabaseClient, sheetId: string): Promise<void> {
+  const res = await db.from("sheets").update({ status: "queued", attempts: 0, error: null }).eq("id", sheetId);
+  if (res.error) throw new Error(`다시 시도: ${res.error.message}`);
+}
+
 // ---------------------------------------------------------------------------
 // 채점 (서버에서만 부릅니다)
 // ---------------------------------------------------------------------------
 
-/** 큐에서 한 장 집어옵니다. 아무것도 없으면 null — 그러면 다 끝난 것입니다. */
-export async function claimOne(db: SupabaseClient, examId: string): Promise<SheetRow | null> {
-  const res = await db.rpc("claim_sheets", { p_exam: examId, p_limit: 1 });
+/**
+ * 채점할 답안지를 집습니다.
+ *
+ * - `sheetId`를 주면 그것만 — 방금 접수한 장입니다.
+ * - 안 주면 떠도는 것 아무거나 — 조교가 창을 닫아 남겨진 것을 쓸어담습니다.
+ *
+ * 남이 이미 집었으면 null입니다. 그게 정상이고, 부르는 쪽은 그냥 멈추면 됩니다.
+ */
+export async function claim(db: SupabaseClient, sheetId?: string): Promise<SheetRow | null> {
+  const res = sheetId
+    ? await db.rpc("claim_sheet", { p_id: sheetId })
+    : await db.rpc("claim_next", { p_limit: 1 });
   if (res.error) throw new Error(`대기열: ${res.error.message}`);
-  const rows = (res.data ?? []) as SheetRow[];
-  return rows[0] ?? null;
+  return ((res.data ?? []) as SheetRow[])[0] ?? null;
 }
 
 export async function pagesOf(db: SupabaseClient, sheetId: string): Promise<SheetPageRow[]> {
@@ -208,16 +214,11 @@ export async function saveGrading(db: SupabaseClient, sheetId: string, g: Gradin
       status: "graded",
       error: null,
       student_name: g.transcript.sheet.student ?? "",
+      title: g.transcript.sheet.title ?? "",
       transcript: g.transcript,
       warnings: g.warnings,
       printed_total: g.transcript.sheet.printedTotal || null,
-      missing: g.missing,
-      robust_to_missing: g.robustToMissing,
-      cut: g.cut,
-      n_wrong: g.nWrong,
-      verdict: g.verdict,
-      near_boundary: g.nearBoundary,
-      margin: g.margin,
+      ...verdictFields(g),
       token_usage: g.usage,
       cost_usd: g.costUsd,
       graded_at: new Date().toISOString(),
@@ -226,17 +227,40 @@ export async function saveGrading(db: SupabaseClient, sheetId: string, g: Gradin
   if (up.error) throw new Error(`채점 결과 저장: ${up.error.message}`);
 }
 
+/** 판정에 관한 칸들. 커트라인만 다시 넣고 셀 때도 같은 모양이라야 합니다. */
+function verdictFields(g: Pick<Grading, "missing" | "robustToMissing" | "cut" | "nWrong" | "verdict" | "nearBoundary" | "margin">) {
+  return {
+    missing: g.missing,
+    robust_to_missing: g.robustToMissing,
+    cut: g.cut,
+    n_wrong: g.nWrong,
+    verdict: g.verdict,
+    near_boundary: g.nearBoundary,
+    margin: g.margin,
+  };
+}
+
+/**
+ * 커트라인만 다시 넣어 판정을 고쳐 셉니다. **모델을 다시 부르지 않습니다** —
+ * 전사도 판정도 이미 있고 모자란 건 숫자 하나뿐인데, 다시 부르면 $0.14입니다.
+ */
+export async function recount(
+  db: SupabaseClient,
+  sheetId: string,
+  cutLine: string,
+  g: Parameters<typeof verdictFields>[0],
+): Promise<void> {
+  const up = await db
+    .from("sheets")
+    .update({ cut_line: cutLine.trim() || null, ...verdictFields(g) })
+    .eq("id", sheetId);
+  if (up.error) throw new Error(`커트라인 반영: ${up.error.message}`);
+}
+
 /**
  * 실패를 기록합니다. **`queued`로 되돌리지 않습니다** —
- * `claim_sheets`가 `attempts < 3`으로 다시 집어가므로, 여기서 되돌리면
- * 실패한 이유를 조교가 볼 새도 없이 무한히 재시도합니다.
+ * 되돌리면 무한히 재시도하고, 조교는 왜 안 되는지 볼 새가 없습니다.
  */
 export async function saveFailure(db: SupabaseClient, sheetId: string, message: string): Promise<void> {
   await db.from("sheets").update({ status: "failed", error: message.slice(0, 500) }).eq("id", sheetId);
-}
-
-/** 실패한 것을 사람이 보고 다시 돌립니다. `attempts`도 0으로 되돌립니다. */
-export async function retrySheet(db: SupabaseClient, sheetId: string): Promise<void> {
-  const res = await db.from("sheets").update({ status: "queued", attempts: 0, error: null }).eq("id", sheetId);
-  if (res.error) throw new Error(`다시 시도: ${res.error.message}`);
 }
