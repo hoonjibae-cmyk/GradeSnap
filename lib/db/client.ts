@@ -13,14 +13,25 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * 확정자·검수자 기록이 전부 null이 됩니다. 그 기록이 정확도 데이터입니다.
  */
 
-function env(name: string): string {
-  const v = (process.env[name] ?? "").trim();
+/**
+ * 🔴 **글자 그대로 `process.env.NEXT_PUBLIC_...`이라고 써야 합니다.**
+ *
+ * Next.js는 브라우저로 나가는 코드에서 이 문자열을 **찾아서 값으로 바꿔치기**
+ * 합니다. `process.env[name]`처럼 이름을 변수로 넘기면 바꿔칠 자리를 못 찾아
+ * 브라우저에서는 `undefined`가 됩니다 — Vercel에 값을 제대로 넣어도 그렇습니다.
+ * 실제로 이걸로 로그인 화면이 통째로 막혔습니다.
+ *
+ * 서버 전용 값(`SUPABASE_SERVICE_ROLE_KEY`)은 런타임에 읽히므로 상관없지만,
+ * 같은 함정을 다시 파지 않도록 여기서도 똑같이 씁니다.
+ */
+function need(value: string | undefined, name: string): string {
+  const v = (value ?? "").trim();
   if (!v) throw new Error(`${name}이(가) 설정되지 않았습니다.`);
   return v;
 }
 
-const url = () => env("NEXT_PUBLIC_SUPABASE_URL");
-const anon = () => env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+const url = () => need(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL");
+const anon = () => need(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
 let browser: SupabaseClient | null = null;
 
@@ -57,7 +68,7 @@ export function bearer(req: Request): string | null {
  * 다른 곳에서 부르지 마십시오.
  */
 export function adminClient(): SupabaseClient {
-  return createClient(url(), env("SUPABASE_SERVICE_ROLE_KEY"), {
+  return createClient(url(), need(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
