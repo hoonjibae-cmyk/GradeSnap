@@ -343,6 +343,17 @@ function Sheets({ db, sheets, onChange }: { db: SupabaseClient; sheets: SheetRow
   );
 }
 
+/** 채점이 끝났으면 줄 전체가 링크, 아니면 그냥 칸. */
+function Wrap({ open, id, children }: { open: boolean; id: string; children: React.ReactNode }) {
+  return open ? (
+    <a href={`/sheets/${id}`} className="min-w-0 flex-1 -m-1 rounded p-1 active:bg-slate-50">
+      {children}
+    </a>
+  ) : (
+    <div className="min-w-0 flex-1">{children}</div>
+  );
+}
+
 function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: () => void }) {
   const [cut, setCut] = useState("");
   const [busy, setBusy] = useState(false);
@@ -376,17 +387,15 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
 
   return (
     <li className="p-3">
+      {/*
+        휴대폰으로 쓰는 화면입니다. 이름 글자만 링크로 두면 손가락으로 맞히기
+        어려워, **줄 전체가 눌리게** 합니다. 채점이 끝난 줄만 열립니다 —
+        열 게 없는 줄을 링크로 두면 헛걸음합니다.
+      */}
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
+        <Wrap open={open} id={s.id}>
           <p className="truncate font-medium">
-            {/* 채점이 끝난 것만 열립니다 — 열 게 없는 줄을 링크로 두면 헛걸음합니다. */}
-            {open ? (
-              <a href={`/sheets/${s.id}`} className="underline decoration-slate-300 underline-offset-2">
-                {s.student_name || <span className="text-slate-400">이름 못 읽음</span>}
-              </a>
-            ) : (
-              s.student_name || <span className="text-slate-400">이름 못 읽음</span>
-            )}
+            {s.student_name || <span className="text-slate-400">이름 못 읽음</span>}
             {s.title && <span className="ml-2 text-sm font-normal text-slate-500">{s.title}</span>}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
@@ -404,7 +413,7 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
             {incomplete && <span className="font-medium text-rose-700">📄 일부만 찍힘</span>}
             {s.error && <span className="text-rose-600">{s.error}</span>}
           </p>
-        </div>
+        </Wrap>
         <div className="flex shrink-0 items-center gap-2">
           {v && (
             <span
@@ -432,8 +441,8 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
             </button>
           )}
           {open && (
-            <a href={`/sheets/${s.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
-              {s.status === "confirmed" ? "보기" : "검수"}
+            <a href={`/sheets/${s.id}`} className="rounded border border-slate-300 px-2.5 py-1.5 text-xs">
+              {s.status === "confirmed" ? "보기" : "검수 ›"}
             </a>
           )}
         </div>
