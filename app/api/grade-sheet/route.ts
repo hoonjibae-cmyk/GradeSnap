@@ -5,7 +5,7 @@ import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import { bearer, userClient } from "@/lib/db/client";
-import { claim, downloadPage, pagesOf, saveFailure, saveGrading } from "@/lib/db/queries";
+import { claim, downloadPage, pagesOf, recordUsage, saveFailure, saveGrading } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -93,10 +93,23 @@ export async function POST(req: Request) {
       costUsd: costUsd(usage, usage[0].model),
     });
 
+    await recordUsage(db, {
+      kind: "grade",
+      sheet_id: id,
+      pages: pages.length,
+      cost_usd: costUsd(usage, usage[0].model),
+      latency_ms: usage.reduce((a, u) => a + u.latencyMs, 0),
+      model: usage[0].model,
+      effort: usage[0].effort ?? null,
+      ok: true,
+    });
+
     return NextResponse.json({ done: false, sheetId: id });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[grade-sheet]", id, message);
+    // 실패해도 토큰은 나갔을 수 있습니다. 지출 기록에 남깁니다.
+    await recordUsage(db, { kind: "grade", sheet_id: id, pages: 0, cost_usd: null, latency_ms: null, model: null, effort: null, ok: false });
     await saveFailure(db, id, message);
     return NextResponse.json({ done: false, sheetId: id, error: message });
   }

@@ -22,6 +22,40 @@ export interface StaffRow {
   id: string;
   name: string;
   role: Role;
+  /**
+   * 끈 직원. **지우지 않고 끕니다** — 행을 지우면 그 사람이 채점한 기록이
+   * 주인을 잃고, "누가 받았나"를 영영 못 답합니다.
+   */
+  active: boolean;
+  created_at: string;
+}
+
+/** 학원이 정하는 근무 시간. 무엇이 '근무 시간 외'인지의 기준입니다. */
+export interface SettingsRow {
+  id: boolean;
+  work_start: number;
+  work_end: number;
+  /** 0=일 … 6=토 */
+  work_days: number[];
+  updated_at: string;
+}
+
+/**
+ * 돈이 나간 호출 하나. `sheets`와 겹치는 것 같지만 다른 사실입니다 —
+ * 저쪽은 **무엇을 채점했는가**, 이쪽은 **누가 언제 돈을 썼는가**입니다.
+ * 특히 '빠른 시험'은 답안지 행이 없어 **여기가 유일한 기록**입니다.
+ */
+export interface UsageEventRow {
+  id: string;
+  staff_id: string | null;
+  kind: "grade" | "quick" | "trial";
+  sheet_id: string | null;
+  pages: number;
+  cost_usd: number | null;
+  latency_ms: number | null;
+  model: string | null;
+  effort: string | null;
+  ok: boolean;
   created_at: string;
 }
 

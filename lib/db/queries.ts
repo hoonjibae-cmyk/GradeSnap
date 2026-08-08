@@ -5,9 +5,12 @@ import {
   toItemRows,
   type ItemRow,
   type ModelTrialRow,
+  type Role,
+  type SettingsRow,
   type SheetPageRow,
   type SheetRow,
   type StaffRow,
+  type UsageEventRow,
   type WrongItemRow,
 } from "./schema";
 
@@ -34,6 +37,75 @@ export async function me(db: SupabaseClient): Promise<StaffRow | null> {
   const res = await db.from("staff").select("*").eq("id", data.user.id).maybeSingle();
   if (res.error) throw new Error(`직원 확인: ${res.error.message}`);
   return (res.data as StaffRow) ?? null;
+}
+
+/** 직원 명부 전부. 끈 사람도 보입니다 — 안 보이면 다시 켤 수가 없습니다. */
+export async function allStaff(db: SupabaseClient): Promise<StaffRow[]> {
+  return ok(
+    await db.from("staff").select("*").order("active", { ascending: false }).order("name"),
+    "직원 목록",
+  ) as StaffRow[];
+}
+
+export async function updateStaff(
+  db: SupabaseClient,
+  id: string,
+  patch: { name?: string; role?: Role; active?: boolean },
+): Promise<void> {
+  const res = await db.from("staff").update(patch).eq("id", id);
+  if (res.error) throw new Error(`직원 수정: ${res.error.message}`);
+}
+
+// ---------------------------------------------------------------------------
+// 근무 시간 · 사용 기록
+// ---------------------------------------------------------------------------
+
+export async function getSettings(db: SupabaseClient): Promise<SettingsRow> {
+  return ok(await db.from("settings").select("*").eq("id", true).single(), "설정") as SettingsRow;
+}
+
+export async function saveSettings(
+  db: SupabaseClient,
+  patch: { work_start: number; work_end: number; work_days: number[] },
+): Promise<void> {
+  const res = await db
+    .from("settings")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", true);
+  if (res.error) throw new Error(`설정 저장: ${res.error.message}`);
+}
+
+/**
+ * 지출 기록을 남깁니다. **실패해도 던지지 않습니다.**
+ *
+ * 기록을 못 남겼다고 채점 결과까지 버리면 학생이 손해입니다.
+ * 돈은 이미 나갔고, 남길 수 있으면 남기고 아니면 로그로 흘립니다.
+ */
+export async function recordUsage(
+  db: SupabaseClient,
+  e: Omit<UsageEventRow, "id" | "staff_id" | "created_at">,
+): Promise<void> {
+  try {
+    const { data: u } = await db.auth.getUser();
+    if (!u.user) return;
+    const res = await db.from("usage_events").insert({ ...e, staff_id: u.user.id });
+    if (res.error) console.error("[usage]", res.error.message);
+  } catch (err) {
+    console.error("[usage]", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** 기간 안의 사용 기록. 관리자는 전부, 나머지는 자기 것만 보입니다(RLS). */
+export async function usageBetween(db: SupabaseClient, fromDay: string, toDay: string): Promise<UsageEventRow[]> {
+  return ok(
+    await db
+      .from("usage_events")
+      .select("*")
+      .gte("created_at", `${fromDay}T00:00:00`)
+      .lte("created_at", `${toDay}T23:59:59.999`)
+      .order("created_at", { ascending: false }),
+    "사용 기록",
+  ) as UsageEventRow[];
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,8 @@ import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { compare } from "@/lib/grading/compare";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
+import { bearer, userClient } from "@/lib/db/client";
+import { me, recordUsage } from "@/lib/db/queries";
 import type { JudgeResult, Transcript, Usage, Warning } from "@/lib/grading/types";
 
 export const runtime = "nodejs";
@@ -52,6 +54,17 @@ interface GradeRequest {
 }
 
 export async function POST(req: Request) {
+  /*
+    🔴 이 라우트는 한동안 **인증이 없었습니다.** 주소만 알면 누구나 학원의
+    API 예산을 쓸 수 있었고, 답안지 행도 안 남아 기록조차 없었습니다.
+    근무 시간 외 사적 사용을 막으려는 마당에 가장 큰 구멍이었습니다.
+  */
+  const token = bearer(req);
+  if (!token) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const db = userClient(token);
+  const staff = await me(db).catch(() => null);
+  if (!staff?.active) return NextResponse.json({ error: "직원만 쓸 수 있습니다." }, { status: 403 });
+
   let body: GradeRequest;
   try {
     body = (await req.json()) as GradeRequest;
@@ -86,6 +99,18 @@ export async function POST(req: Request) {
     usage.push(u2);
     // 판정은 대조 로직에 맡깁니다 — 화면과 서버가 다른 규칙을 쓰면 언젠가 어긋납니다.
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
+
+    // 답안지를 안 남기는 호출이라 **여기가 유일한 지출 기록**입니다.
+    await recordUsage(db, {
+      kind: "quick",
+      sheet_id: null,
+      pages: parts.length,
+      cost_usd: costUsd(usage, usage[0].model),
+      latency_ms: usage.reduce((a, u) => a + u.latencyMs, 0),
+      model: usage[0].model,
+      effort: usage[0].effort ?? null,
+      ok: true,
+    });
 
     const res: GradeResponse = {
       transcript,

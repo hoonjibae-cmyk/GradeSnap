@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GradeResponse } from "@/app/api/grade/route";
+import { Bar, Gate } from "@/components/Gate";
+import type { StaffRow } from "@/lib/db/schema";
 import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
 
 /**
@@ -11,7 +14,11 @@ import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
  * 새 시험지 유형이 읽히는지, 프롬프트를 고친 게 나아졌는지를
  * 시험을 만들지 않고 눌러볼 데가 있어야 하기 때문입니다.
  */
-export default function Quick() {
+export default function QuickPage() {
+  return <Gate>{(db, staff) => <Quick db={db} staff={staff} />}</Gate>;
+}
+
+function Quick({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   // 한 학생의 답안지 사진들. **양면 인쇄면 앞·뒤 두 장입니다.**
   const [imgs, setImgs] = useState<PreparedImage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -45,9 +52,10 @@ export default function Quick() {
     setErr(null);
     setRes(null);
     try {
+      const { data } = await db.auth.getSession();
       const r = await fetch("/api/grade", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
         body: JSON.stringify({
           images: imgs.map((i) => ({ data: i.base64, mediaType: i.mediaType })),
           strictSpelling: strict,
@@ -71,13 +79,16 @@ export default function Quick() {
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-24">
+      <Bar db={db} staff={staff}>
+        <a href="/" className="text-slate-500 underline">
+          접수
+        </a>
+      </Bar>
       <header className="mb-6">
         <h1 className="text-2xl font-bold">빠른 시험</h1>
         <p className="mt-1 text-sm text-slate-600">
-          한 학생분을 <strong>저장하지 않고</strong> 채점해 봅니다.{" "}
-          <a href="/" className="underline">
-            시험 목록으로
-          </a>
+          한 학생분을 <strong>저장하지 않고</strong> 채점해 봅니다. 답안지는 안 남지만{" "}
+          <strong>사용 기록에는 남습니다</strong> — 학원 계정으로 나가는 비용이기 때문입니다.
         </p>
       </header>
 

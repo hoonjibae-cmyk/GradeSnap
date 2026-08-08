@@ -5,7 +5,7 @@ import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import { bearer, userClient } from "@/lib/db/client";
-import { downloadPage, getSheet, pagesOf, saveTrial } from "@/lib/db/queries";
+import { downloadPage, getSheet, pagesOf, recordUsage, saveTrial } from "@/lib/db/queries";
 import type { CallOptions } from "@/lib/grading/client";
 
 export const runtime = "nodejs";
@@ -94,6 +94,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       error: null,
     });
 
+    await recordUsage(db, {
+      kind: "trial",
+      sheet_id: id,
+      pages: pages.length,
+      cost_usd: costUsd(usage, model),
+      latency_ms: Date.now() - t0,
+      model,
+      effort,
+      ok: true,
+    });
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     // **거절도 스키마 실패도 결과입니다.** 값싼 모델이 못 해내는 것을 지우면
@@ -122,6 +133,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     } catch {
       /* 기록조차 못 남기면 응답으로만 알립니다 */
     }
+    await recordUsage(db, {
+      kind: "trial",
+      sheet_id: id,
+      pages: 0,
+      cost_usd: null,
+      latency_ms: Date.now() - t0,
+      model,
+      effort,
+      ok: false,
+    });
     return NextResponse.json({ ok: false, error: message });
   }
 }

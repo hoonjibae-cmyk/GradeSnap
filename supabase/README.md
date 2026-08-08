@@ -12,6 +12,8 @@ migrations/20260808000200_rls.sql               -- 접근 제어 · 사진 버�
 migrations/20260808000300_intake.sql            -- 시험 묶음을 버리고 접수 단위로
 migrations/20260808000400_fix_staff_recursion.sql  -- 직원 정책 무한 재귀 수정
 migrations/20260808000500_unconfirm.sql         -- 확정 취소 시 기록도 지움
+migrations/20260808000600_model_trials.sql      -- 모델 비교 실험 기록
+migrations/20260808000700_users_usage.sql       -- 직원 켜고 끄기 · 근무 시간 · 사용 기록
 ```
 
 CLI를 쓴다면 `supabase db push`도 같은 일을 합니다.
@@ -28,7 +30,7 @@ insert into public.staff (id, name, role)
 values ('붙여넣은-uuid', '원장', 'admin');
 ```
 
-그다음부터는 admin이 화면에서 직원을 추가합니다.
+그다음부터는 admin이 **`/admin` 화면에서** 직원을 추가합니다. SQL은 첫 사람 한 번뿐입니다.
 
 | 역할 | 할 수 있는 것 |
 |---|---|
