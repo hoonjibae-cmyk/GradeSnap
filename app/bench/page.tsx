@@ -233,7 +233,12 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                 ({sum.verdictAgree}/{sum.compared}장)
               </span>
               {sum.flipped > 0 && <span className="ml-2 font-bold text-rose-700">뒤집힘 {sum.flipped}장</span>}
-              {sum.undecided > 0 && <span className="ml-2 text-amber-700">한쪽만 판정 {sum.undecided}장</span>}
+              {sum.trialUndecided > 0 && (
+                <span className="ml-2 text-amber-700">대상만 판정 못 냄 {sum.trialUndecided}장</span>
+              )}
+              {sum.incomparable > 0 && (
+                <span className="ml-2 text-slate-500">기준도 판정 없음 {sum.incomparable}장</span>
+              )}
             </p>
             <p className="mt-1 text-xs text-slate-600">
               이 시스템이 내놓는 것은 PASS/FAIL 하나이고, 학생에게 일어나는 일도 그것뿐입니다.
@@ -279,6 +284,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                 <th className="p-2 font-medium">대상</th>
                 <th className="p-2 font-medium">판정</th>
                 <th className="p-2 font-medium">읽은 칸</th>
+                <th className="p-2 font-medium">정오 차이</th>
                 <th className="p-2 font-medium">전사 차이</th>
                 <th className="p-2 font-medium">비용</th>
               </tr>
@@ -311,6 +317,24 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                   <td className="p-2 text-slate-600">
                     {d.trialRead} / {d.baseRead}
                     {d.onlyBase.length > 0 && <span className="ml-1 text-xs text-rose-600">-{d.onlyBase.length}</span>}
+                  </td>
+                  <td className="p-2 text-xs text-slate-600">
+                    {d.wrongOnlyTrial.length === 0 && d.wrongOnlyBase.length === 0 ? (
+                      <span className="text-slate-400">없음</span>
+                    ) : (
+                      <span>
+                        {d.wrongOnlyTrial.length > 0 && (
+                          <span className="text-rose-700" title="대상만 오답으로 본 문항">
+                            +{d.wrongOnlyTrial.join(",")}
+                          </span>
+                        )}
+                        {d.wrongOnlyBase.length > 0 && (
+                          <span className="ml-1 text-sky-700" title="기준만 오답으로 본 문항">
+                            -{d.wrongOnlyBase.join(",")}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td className="p-2 text-xs text-slate-600">
                     {d.written.length === 0 ? (

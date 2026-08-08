@@ -102,8 +102,16 @@ export interface Summary {
   verdictAgree: number;
   /** 판정이 갈린 답안지 — **이게 늘면 못 바꿉니다** */
   flipped: number;
-  /** 한쪽만 판정을 낸 답안지. 값싼 모델이 커트라인을 못 읽으면 여기가 늡니다. */
-  undecided: number;
+  /**
+   * **대상만** 판정을 못 낸 답안지. 값싼 모델이 커트라인을 못 읽으면 여기가 늡니다.
+   * 이건 대상 모델의 흠입니다.
+   */
+  trialUndecided: number;
+  /**
+   * **기준도** 판정이 없던 답안지. 애초에 비교가 안 되는 장이고,
+   * 대상 모델의 흠이 아닙니다. 둘을 뭉뚱그리면 값싼 모델을 억울하게 만듭니다.
+   */
+  incomparable: number;
   itemsCompared: number;
   itemsAgree: number;
   writtenDiffs: number;
@@ -120,7 +128,8 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     compared: 0,
     verdictAgree: 0,
     flipped: 0,
-    undecided: 0,
+    trialUndecided: 0,
+    incomparable: 0,
     itemsCompared: 0,
     itemsAgree: 0,
     writtenDiffs: 0,
@@ -131,8 +140,11 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     trialMs: 0,
   };
   for (const { base, diff } of pairs) {
-    if (diff.verdictMatch === null) s.undecided++;
-    else {
+    if (diff.verdictMatch === null) {
+      // 기준이 판정을 못 낸 장은 대상 모델 탓이 아닙니다. 구분해서 셉니다.
+      if (diff.baseVerdict === null) s.incomparable++;
+      else s.trialUndecided++;
+    } else {
       s.compared++;
       if (diff.verdictMatch) s.verdictAgree++;
       else s.flipped++;

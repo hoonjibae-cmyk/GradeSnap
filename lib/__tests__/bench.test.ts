@@ -87,7 +87,18 @@ describe("모아서 세기", () => {
     expect(s.sheets).toBe(2);
     expect(s.compared).toBe(1);
     expect(s.verdictAgree).toBe(1);
-    expect(s.undecided).toBe(1);
+    expect(s.trialUndecided).toBe(1);
+  });
+
+  it("기준도 판정이 없던 장은 대상 모델 탓으로 세지 않는다", () => {
+    // 첫 실측에서 이걸 뭉뚱그려 '한쪽만 2장'으로 보여줬습니다.
+    // 그중 하나는 Opus도 판정을 못 낸 장이라 Sonnet의 흠이 아니었습니다.
+    const base = { ...run({ cells: [["1", "가"]], wrong: [] }), verdict: null };
+    const d = diffRuns(base, { ...run({ cells: [["1", "가"]], wrong: [] }), verdict: null });
+    const s = summarize([{ base, diff: d }]);
+    expect(s.incomparable).toBe(1);
+    expect(s.trialUndecided).toBe(0);
+    expect(s.compared).toBe(0);
   });
 
   it("비용을 양쪽 다 더한다", () => {
