@@ -80,6 +80,31 @@ describe("저장된 문항으로 커트라인만 다시 세기", () => {
     const rows = [{ no: "1", correct: null, expected: "", note: "" }];
     expect(toJudgeResults(rows)[0].correct).toBe(false);
   });
+
+  it("선생님이 고친 값이 시스템 판정을 이깁니다", () => {
+    const rows = [
+      { no: "1", correct: false, final_correct: true, expected: "", note: "" }, // 선생님이 살려줌
+      { no: "2", correct: true, final_correct: false, expected: "", note: "" }, // 선생님이 잡아냄
+      { no: "3", correct: true, final_correct: true, expected: "", note: "" },
+    ];
+    expect(toJudgeResults(rows).map((r) => r.correct)).toEqual([true, false, true]);
+  });
+
+  it("검수한 결과로 커트라인을 다시 판단합니다", () => {
+    // 시스템은 오답 7개(허용 7, 여유 0)로 봤는데 선생님이 하나를 살려주면
+    // 여유가 1로 늘어 경계선에서 벗어나는지까지 다시 세어져야 합니다.
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      no: String(i + 1),
+      correct: i >= 7,
+      final_correct: i >= 6, // 1번을 선생님이 정답 처리
+      expected: "",
+      note: "",
+    }));
+    const c = compare(toJudgeResults(rows), { wrong: [], passFail: "unmarked" }, "커트라인 -7개");
+    expect(c.oursWrong).toHaveLength(6);
+    expect(c.margin).toBe(-1);
+    expect(c.ourVerdict).toBe("pass");
+  });
 });
 
 describe("사람이 반드시 봐야 하는 답안지", () => {

@@ -4,13 +4,14 @@
 
 ## 1. 마이그레이션 적용
 
-Supabase 대시보드 → **SQL Editor**에서 네 파일을 **순서대로** 붙여넣고 실행합니다.
+Supabase 대시보드 → **SQL Editor**에서 파일을 **순서대로** 붙여넣고 실행합니다.
 
 ```
 migrations/20260808000100_init.sql              -- 표 · 뷰 · 큐 함수
 migrations/20260808000200_rls.sql               -- 접근 제어 · 사진 버킷
 migrations/20260808000300_intake.sql            -- 시험 묶음을 버리고 접수 단위로
 migrations/20260808000400_fix_staff_recursion.sql  -- 직원 정책 무한 재귀 수정
+migrations/20260808000500_unconfirm.sql         -- 확정 취소 시 기록도 지움
 ```
 
 CLI를 쓴다면 `supabase db push`도 같은 일을 합니다.

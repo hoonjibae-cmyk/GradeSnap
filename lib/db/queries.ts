@@ -128,6 +128,53 @@ export async function itemsOf(db: SupabaseClient, sheetId: string): Promise<Item
   return ok(await db.from("items").select("*").eq("sheet_id", sheetId).order("seq"), "문항") as ItemRow[];
 }
 
+/** 사진을 잠깐 볼 수 있는 주소. 비공개 버킷이라 서명 URL로만 봅니다. */
+export async function pageUrls(db: SupabaseClient, sheetId: string, seconds = 600): Promise<string[]> {
+  const pages = await pagesOf(db, sheetId);
+  if (!pages.length) return [];
+  const res = await db.storage.from(BUCKET).createSignedUrls(pages.map((p) => p.storage_path), seconds);
+  if (res.error) throw new Error(`사진 주소: ${res.error.message}`);
+  // 한 장이 실패해도 나머지는 보여줍니다 — 검수가 사진 하나 때문에 막히면 안 됩니다.
+  return (res.data ?? []).flatMap((d) => (d.signedUrl ? [d.signedUrl] : []));
+}
+
+/**
+ * 선생님이 문항 판정을 고칩니다. `null`이면 시스템 판정으로 되돌립니다.
+ *
+ * **시스템과 같은 값이라도 눌렀으면 기록합니다.** "사람이 보고 그대로 뒀다"와
+ * "아무도 안 봤다"는 다른 사실이고, 검수를 줄일지 판단할 때 필요한 것은 앞쪽입니다.
+ */
+export async function setTeacherVerdict(db: SupabaseClient, itemId: string, correct: boolean | null): Promise<void> {
+  const { data: u } = await db.auth.getUser();
+  const res = await db
+    .from("items")
+    .update({
+      teacher_correct: correct,
+      reviewed_by: correct === null ? null : (u.user?.id ?? null),
+      reviewed_at: correct === null ? null : new Date().toISOString(),
+    })
+    .eq("id", itemId);
+  if (res.error) throw new Error(`판정 고치기: ${res.error.message}`);
+}
+
+/**
+ * 확정합니다. **이게 실제로 나가는 결과입니다.**
+ * 조교가 누르면 DB의 트리거가 막습니다 — 화면에서도 감추지만 경계는 DB입니다.
+ */
+export async function confirmSheet(db: SupabaseClient, sheetId: string, verdict: Verdict): Promise<void> {
+  const res = await db.from("sheets").update({ status: "confirmed", final_verdict: verdict }).eq("id", sheetId);
+  if (res.error) throw new Error(`확정: ${res.error.message}`);
+}
+
+/** 확정을 되돌립니다. 잘못 눌렀을 때 나갈 길이 있어야 합니다. */
+export async function unconfirmSheet(db: SupabaseClient, sheetId: string): Promise<void> {
+  const res = await db
+    .from("sheets")
+    .update({ status: "graded", final_verdict: null, confirmed_by: null, confirmed_at: null })
+    .eq("id", sheetId);
+  if (res.error) throw new Error(`확정 취소: ${res.error.message}`);
+}
+
 /** 올리다 만 것, 실패한 것을 지웁니다. 사진 행은 FK로 같이 사라집니다. */
 export async function deleteSheet(db: SupabaseClient, sheet: SheetRow): Promise<void> {
   const paths = ok(

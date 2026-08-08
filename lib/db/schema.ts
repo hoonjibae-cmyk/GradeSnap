@@ -151,7 +151,21 @@ export function toItemRows(sheetId: string, items: Item[], results: JudgeResult[
   });
 }
 
-/** 저장된 문항 행에서 판정 결과를 되살립니다. 커트라인만 다시 넣어 셀 때 씁니다. */
-export function toJudgeResults(rows: Pick<ItemRow, "no" | "correct" | "expected" | "note">[]): JudgeResult[] {
-  return rows.map((r) => ({ no: r.no, correct: r.correct ?? false, expected: r.expected, note: r.note }));
+/**
+ * 저장된 문항 행에서 판정 결과를 되살립니다. 다시 셀 때 씁니다.
+ *
+ * **선생님이 고친 값을 씁니다**(`final_correct`). 그래야 검수한 대로 오답이
+ * 세어지고, 커트라인에 걸리는지도 검수 결과 기준으로 다시 판단됩니다.
+ * 판정이 아예 없는 문항은 오답으로 셉니다 — 모르는 것을 통과 쪽으로
+ * 기울이면 학생이 잘못 집에 갑니다.
+ */
+export function toJudgeResults(
+  rows: { no: string; correct?: boolean | null; final_correct?: boolean | null; expected: string; note: string }[],
+): JudgeResult[] {
+  return rows.map((r) => ({
+    no: r.no,
+    correct: (r.final_correct ?? r.correct) ?? false,
+    expected: r.expected,
+    note: r.note,
+  }));
 }

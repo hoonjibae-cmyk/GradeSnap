@@ -352,13 +352,14 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
   const drift = (s.warnings ?? []).some((w) => w.level === "drift");
   const incomplete = (s.warnings ?? []).some((w) => w.level === "incomplete");
   const noCut = s.status === "graded" && s.cut === null;
+  const open = s.status === "graded" || s.status === "confirmed";
 
   async function applyCut() {
     setBusy(true);
     setErr(null);
     try {
       const { data } = await db.auth.getSession();
-      const r = await fetch(`/api/sheets/${s.id}/cutline`, {
+      const r = await fetch(`/api/sheets/${s.id}/recount`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
         body: JSON.stringify({ cutLine: cut }),
@@ -378,7 +379,14 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-medium">
-            {s.student_name || <span className="text-slate-400">이름 못 읽음</span>}
+            {/* 채점이 끝난 것만 열립니다 — 열 게 없는 줄을 링크로 두면 헛걸음합니다. */}
+            {open ? (
+              <a href={`/sheets/${s.id}`} className="underline decoration-slate-300 underline-offset-2">
+                {s.student_name || <span className="text-slate-400">이름 못 읽음</span>}
+              </a>
+            ) : (
+              s.student_name || <span className="text-slate-400">이름 못 읽음</span>
+            )}
             {s.title && <span className="ml-2 text-sm font-normal text-slate-500">{s.title}</span>}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
@@ -422,6 +430,11 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
             >
               삭제
             </button>
+          )}
+          {open && (
+            <a href={`/sheets/${s.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
+              {s.status === "confirmed" ? "보기" : "검수"}
+            </a>
           )}
         </div>
       </div>
