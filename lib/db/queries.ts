@@ -254,6 +254,91 @@ export async function downloadPage(db: SupabaseClient, path: string): Promise<st
 }
 
 // ---------------------------------------------------------------------------
+// 사진 보관 — 90일
+// ---------------------------------------------------------------------------
+
+export interface RetentionStatus {
+  /** 아직 갖고 있는 사진 수 */
+  kept: number;
+  /** 보관 기간이 지나 지워야 할 사진 수 */
+  expired: number;
+  /** 지운 뒤 행만 남은 것 */
+  purged: number;
+  /** 갖고 있는 것 중 가장 오래된 사진의 날짜 */
+  oldest: string | null;
+}
+
+export async function retentionStatus(db: SupabaseClient): Promise<RetentionStatus> {
+  const count = async (q: PromiseLike<{ count: number | null; error: { message: string } | null }>) => {
+    const res = await q;
+    if (res.error) throw new Error(`보관 현황: ${res.error.message}`);
+    return res.count ?? 0;
+  };
+  const kept = await count(db.from("sheet_pages").select("id", { count: "exact", head: true }).is("purged_at", null));
+  const purged = await count(db.from("sheet_pages").select("id", { count: "exact", head: true }).not("purged_at", "is", null));
+  const expired = await count(db.from("expired_pages").select("id", { count: "exact", head: true }));
+
+  const res = await db
+    .from("sheet_pages")
+    .select("created_at")
+    .is("purged_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (res.error) throw new Error(`보관 현황: ${res.error.message}`);
+
+  return { kept, purged, expired, oldest: (res.data as { created_at: string } | null)?.created_at ?? null };
+}
+
+export interface Purged {
+  deleted: number;
+  rounds: number;
+  /** 지울 게 더 남았는데 한 번에 다 못 한 경우. 다음 실행이 이어서 합니다. */
+  remaining: boolean;
+}
+
+/**
+ * 보관 기간이 지난 사진을 **파일까지** 지웁니다.
+ *
+ * `service_role`로 도는 정리 작업 전용입니다 — 부르는 사람의 세션이 없습니다.
+ *
+ * **순서가 중요합니다: 파일 먼저, 도장은 나중.**
+ * 거꾸로 하면 "지웠다"고 적어놓고 파일이 남는 일이 생깁니다. 그건 학부모에게
+ * 한 약속을 어기는 것입니다. 반대로 파일만 지우고 도장을 못 찍으면 다음 실행이
+ * 없는 파일을 한 번 더 지우려 할 뿐이고, 그건 아무 해가 없습니다.
+ *
+ * **행은 남깁니다.** 무엇이 있었는지는 기록입니다(docs/13 §13.7).
+ */
+export async function purgeExpired(admin: SupabaseClient, batch = 100, maxRounds = 20): Promise<Purged> {
+  let deleted = 0;
+  let rounds = 0;
+
+  for (; rounds < maxRounds; rounds++) {
+    const res = await admin.from("expired_pages").select("id, storage_path").limit(batch);
+    if (res.error) throw new Error(`만료 목록: ${res.error.message}`);
+    const rows = (res.data ?? []) as { id: string; storage_path: string }[];
+    if (!rows.length) return { deleted, rounds, remaining: false };
+
+    const rm = await admin.storage.from(BUCKET).remove(rows.map((r) => r.storage_path));
+    if (rm.error) throw new Error(`사진 삭제: ${rm.error.message}`);
+
+    const up = await admin
+      .from("sheet_pages")
+      .update({ purged_at: new Date().toISOString() })
+      .in(
+        "id",
+        rows.map((r) => r.id),
+      );
+    if (up.error) throw new Error(`삭제 기록: ${up.error.message}`);
+
+    deleted += rows.length;
+  }
+
+  // 한 번에 다 못 지웠습니다. 남은 것은 다음 실행이 가져갑니다.
+  return { deleted, rounds, remaining: true };
+}
+
+// ---------------------------------------------------------------------------
 // 모델 비교 실험
 // ---------------------------------------------------------------------------
 

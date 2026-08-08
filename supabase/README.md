@@ -60,8 +60,27 @@ select count(*) from public.sheets;            -- 0이 나오면 정상
 select to_regclass('public.exams') is null;    -- t 여야 합니다 (0003이 없앱니다)
 ```
 
-## 사진 보관
+## 사진 보관 — 90일
 
 `sheets` 버킷은 **비공개**입니다. 화면에는 서명 URL로만 띄웁니다.
-90일이 지난 사진은 앱이 지우고 `sheet_pages.purged_at`을 찍습니다 —
-**행은 남습니다.** 무엇이 있었는지는 기록입니다.
+
+90일이 지난 사진은 **매일 새벽 3시(KST)** 에 Vercel Cron이 지웁니다
+(`vercel.json` → `/api/retention`). 파일을 먼저 지우고 `sheet_pages.purged_at`을
+찍습니다 — **행은 남습니다.** 무엇이 있었는지는 기록입니다.
+
+돌리려면 환경 변수 하나가 더 필요합니다.
+
+| 이름 | 값 | 왜 |
+|---|---|---|
+| `CRON_SECRET` | 아무 긴 무작위 문자열 | Vercel Cron만 부를 수 있게 막습니다 |
+
+**`SUPABASE_SERVICE_ROLE_KEY`가 실제로 쓰이는 곳이 여기 하나입니다.**
+정리 작업은 부르는 사람의 세션이 없어 RLS를 통과할 수 없습니다.
+
+확인은 `/admin`에서 합니다 — 갖고 있는 사진 수, 지워야 할 사진 수, 가장
+오래된 사진 날짜가 나오고 손으로 돌리는 버튼도 있습니다.
+
+```sql
+-- 지울 것이 남아 있는가 (0이어야 정상)
+select count(*) from public.expired_pages;
+```
