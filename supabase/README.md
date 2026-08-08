@@ -4,12 +4,13 @@
 
 ## 1. 마이그레이션 적용
 
-Supabase 대시보드 → **SQL Editor**에서 세 파일을 **순서대로** 붙여넣고 실행합니다.
+Supabase 대시보드 → **SQL Editor**에서 네 파일을 **순서대로** 붙여넣고 실행합니다.
 
 ```
-migrations/20260808000100_init.sql       -- 표 · 뷰 · 큐 함수
-migrations/20260808000200_rls.sql        -- 접근 제어 · 사진 버킷
-migrations/20260808000300_intake.sql     -- 시험 묶음을 버리고 접수 단위로
+migrations/20260808000100_init.sql              -- 표 · 뷰 · 큐 함수
+migrations/20260808000200_rls.sql               -- 접근 제어 · 사진 버킷
+migrations/20260808000300_intake.sql            -- 시험 묶음을 버리고 접수 단위로
+migrations/20260808000400_fix_staff_recursion.sql  -- 직원 정책 무한 재귀 수정
 ```
 
 CLI를 쓴다면 `supabase db push`도 같은 일을 합니다.
@@ -52,6 +53,8 @@ Vercel 프로젝트 → Settings → Environment Variables. `.env.example`과 �
 
 ```sql
 select public.is_staff();                      -- 로그인한 채로 true여야 합니다
+select public.is_admin();                      -- 첫 직원이면 true
+select * from public.staff;                    -- 여기서 안 멈추면 재귀가 풀린 것입니다
 select count(*) from public.sheets;            -- 0이 나오면 정상
 select to_regclass('public.exams') is null;    -- t 여야 합니다 (0003이 없앱니다)
 ```
