@@ -10,7 +10,12 @@ import type { Item, Transcript, Warning } from "./types";
  * 다섯 가지 중 앞의 넷은 사람 입력이 전혀 필요 없습니다.
  * `tools/grade_page.py`의 `check_drift`를 옮긴 것입니다.
  */
-export function checkDrift(t: Transcript, key?: { no: string; prompt: string }[]): Warning[] {
+export function checkDrift(
+  t: Transcript,
+  key?: { no: string; prompt: string }[],
+  /** 올린 사진 장수. 알면 "다음 장을 올리라"와 "칸을 놓쳤다"를 가려 말할 수 있습니다. */
+  pages = 1,
+): Warning[] {
   const warn: Warning[] = [];
   const drift = (text: string) => warn.push({ level: "drift", text });
   // 시험지 일부만 찍힌 상태. 밀림과 원인도 대응도 다릅니다 — 더 찍으면 됩니다.
@@ -55,10 +60,14 @@ export function checkDrift(t: Transcript, key?: { no: string; prompt: string }[]
     if (contiguous && items.length < total) {
       const nums = nos.map(numKey).filter((n) => n < Number.MAX_SAFE_INTEGER);
       const last = nums.length ? Math.max(...nums) : items.length;
+      const short = total - items.length;
       incomplete(
-        `이 시험지는 ${total}문항인데 ${items.length}문항만 찍혔습니다 ` +
-          `(${last}번까지). **뒷면이나 다음 장을 마저 찍어 함께 올리십시오.** ` +
-          `이대로는 안 찍힌 문항을 통째로 틀려도 통과로 나옵니다.`,
+        pages > 1
+          ? `${pages}장을 올렸는데 ${total}문항 중 ${items.length}문항만 읽혔습니다 ` +
+              `(${last}번까지, ${short}칸 부족). 장이 더 있는지 확인하시고, ` +
+              `다 올리셨다면 **${short}칸을 놓친 것이니 검수해 주십시오.**`
+          : `이 시험지는 ${total}문항인데 ${items.length}문항만 읽혔습니다 ` +
+              `(${last}번까지, ${short}칸 부족). **뒷면이나 다음 장을 마저 찍어 함께 올리십시오.**`,
       );
     } else {
       drift(`인쇄된 문항 수 ${total} ≠ 전사 ${items.length} — 밀렸거나 빠졌습니다.`);
@@ -139,7 +148,13 @@ export function hasDrift(warn: Warning[] | null | undefined): boolean {
   return (warn ?? []).some((w) => w.level === "drift");
 }
 
-/** 시험지 일부만 찍혔는가. **이때는 PASS/FAIL을 내면 안 됩니다.** */
+/** 시험지 일부만 읽혔는가. 판정을 낼지는 `compare`가 못 읽은 칸 수로 따로 판단합니다. */
 export function isIncomplete(warn: Warning[] | null | undefined): boolean {
   return (warn ?? []).some((w) => w.level === "incomplete");
+}
+
+/** 인쇄된 문항 수보다 몇 칸이 덜 읽혔는가. 판정을 낼 수 있는지 가르는 값입니다. */
+export function missingCount(t: Transcript): number {
+  const total = t.sheet?.printedTotal || 0;
+  return total ? Math.max(0, total - (t.items?.length ?? 0)) : 0;
 }

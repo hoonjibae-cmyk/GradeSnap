@@ -77,8 +77,16 @@ export interface JudgeResult {
 export type Verdict = "pass" | "fail";
 
 export interface Comparison {
-  /** 시험지 일부만 찍혔으면 true. 이때는 PASS/FAIL을 내지 않습니다. */
-  incomplete: boolean;
+  /** 인쇄된 문항 수보다 덜 읽힌 칸 수. 0이면 온전합니다. */
+  missing: number;
+  /**
+   * 못 읽은 칸을 **전부 틀렸다고 쳐도** 결정이 안 바뀌면 true.
+   *
+   * 덜 읽혔다고 무조건 판정을 막으면 과합니다 — 48칸 중 46칸을 읽고 오답 3개,
+   * 허용 6개라면 못 읽은 2칸이 다 틀려도 5개라 여전히 통과입니다.
+   * 반대로 60칸 중 47칸이면 못 읽은 13칸이 결정을 뒤집으므로 막아야 합니다.
+   */
+  robustToMissing: boolean;
   /** 허용 오답 개수. 머리말에서 못 읽으면 null */
   cut: number | null;
   ourVerdict: Verdict | null;

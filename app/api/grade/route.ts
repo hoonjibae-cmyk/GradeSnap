@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { anthropic, costUsd } from "@/lib/grading/client";
-import { checkDrift, isIncomplete } from "@/lib/grading/drift";
+import { checkDrift, missingCount } from "@/lib/grading/drift";
+import { compare } from "@/lib/grading/compare";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import type { JudgeResult, Transcript, Usage, Warning } from "@/lib/grading/types";
@@ -16,8 +17,13 @@ export interface GradeResponse {
   transcript: Transcript;
   warnings: Warning[];
   results: JudgeResult[];
-  /** 시험지 일부만 찍혔는가. true면 PASS/FAIL을 내지 않습니다. */
-  incomplete: boolean;
+  /** 인쇄된 문항 수보다 덜 읽힌 칸 수 */
+  missing: number;
+  /** 못 읽은 칸을 전부 틀렸다 쳐도 결정이 안 바뀌면 true. false면 판정을 내지 않습니다. */
+  robustToMissing: boolean;
+  /** 허용 오답 개수. 못 읽으면 null */
+  cut: number | null;
+  verdict: "pass" | "fail" | null;
   pages: number;
   usage: Usage[];
   costUsd: number;
@@ -65,16 +71,23 @@ export async function POST(req: Request) {
     const transcript = mergeTranscripts(parts);
     if (body.cutLineOverride?.trim()) transcript.sheet.cutLine = body.cutLineOverride.trim();
 
-    const warnings = checkDrift(transcript);
+    const warnings = checkDrift(transcript, undefined, parts.length);
+    const missing = missingCount(transcript);
 
     // 전사와 판정을 **따로** 부릅니다. 한 번에 시키면 틀린 답을 정답으로 고쳐 읽습니다.
     const { results, usage: u2 } = await judge(client, transcript, body.strictSpelling ?? false);
     usage.push(u2);
+    // 판정은 대조 로직에 맡깁니다 — 화면과 서버가 다른 규칙을 쓰면 언젠가 어긋납니다.
+    const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
+
     const res: GradeResponse = {
       transcript,
       warnings,
       results,
-      incomplete: isIncomplete(warnings),
+      missing,
+      robustToMissing: cmp.robustToMissing,
+      cut: cmp.cut,
+      verdict: cmp.ourVerdict,
       pages: parts.length,
       usage,
       costUsd: costUsd(usage, usage[0].model),

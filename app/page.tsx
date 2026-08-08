@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { GradeResponse } from "@/app/api/grade/route";
 import { prepareImage, type PreparedImage } from "@/lib/image";
-import { parseCut, verdict } from "@/lib/grading/cutline";
 
 /**
  * M1 1단계 — 사진 한 장을 채점해 화면에 띄웁니다.
@@ -59,10 +58,9 @@ export default function Home() {
   }
 
   const wrong = res?.results.filter((r) => !r.correct) ?? [];
-  const cut = res ? parseCut(res.transcript.sheet.cutLine, res.results.length) : null;
-  // 시험지 일부만 찍혔으면 판정하지 않습니다. 안 찍힌 문항을 통째로 틀려도
-  // 통과로 나가기 때문입니다.
-  const v = res && !res.incomplete ? verdict(wrong.length, cut) : null;
+  // 판정은 서버에서 계산한 것을 그대로 씁니다. 화면이 따로 계산하면 언젠가 어긋납니다.
+  const cut = res?.cut ?? null;
+  const v = res?.verdict ?? null;
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-24">
@@ -177,12 +175,19 @@ export default function Home() {
                 ${res.costUsd.toFixed(3)} · {(res.usage.reduce((a, u) => a + u.latencyMs, 0) / 1000).toFixed(0)}초
               </span>
             </div>
-            {res.incomplete && (
+            {res.missing > 0 && !res.robustToMissing && (
               <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
-                시험지 일부만 찍혀 <strong>PASS/FAIL을 판정하지 않았습니다.</strong> 나머지 장을 마저 올리십시오.
+                못 읽은 {res.missing}칸이 <strong>결과를 뒤집을 수 있어 PASS/FAIL을 내지 않았습니다.</strong>{" "}
+                (다 틀렸다면 오답 {wrong.length + res.missing}개 &gt; 허용 {cut}개) 나머지를 올리거나 검수하십시오.
               </p>
             )}
-            {!res.incomplete && cut === null && (
+            {res.missing > 0 && res.robustToMissing && (
+              <p className="mt-2 rounded-lg bg-slate-100 p-2 text-sm text-slate-700">
+                {res.missing}칸을 못 읽었지만 <strong>다 틀렸다고 쳐도 결과는 같아</strong> 그대로 판정했습니다.
+                (최악 {wrong.length + res.missing}개 ≤ 허용 {cut}개)
+              </p>
+            )}
+            {res.robustToMissing && cut === null && (
               <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
                 커트라인을 못 읽어 PASS/FAIL을 판정하지 않았습니다. 추측하면 학생이 잘못 남습니다.
                 위 <strong>커트라인 직접 입력</strong>에 넣고 다시 채점하십시오.

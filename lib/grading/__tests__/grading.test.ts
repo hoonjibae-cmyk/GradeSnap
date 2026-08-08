@@ -234,20 +234,48 @@ describe("현장 테스트에서 나온 것 — 양면 시험지", () => {
     expect(w[0].text).toContain("47문항만");
   });
 
-  it("일부만 찍혔으면 PASS/FAIL을 내지 않는다", () => {
-    // 안 찍힌 13문항을 통째로 틀린 학생도 통과로 나가면 안 된다
+  it("두 장을 올렸는데도 모자라면 '장을 더 올리라'가 아니라 '칸을 놓쳤다'고 한다", () => {
+    // 실제 문법백지TEST: 2장을 다 올렸는데 48칸 중 46칸만 읽혔다.
+    // "뒷면을 마저 올리십시오"는 이미 올린 사람에게 틀린 안내다.
+    const w = checkDrift(page(1, 46, 48), undefined, 2);
+    expect(w[0].text).toContain("2장을 올렸는데");
+    expect(w[0].text).toContain("2칸을 놓친 것이니 검수");
+    expect(w[0].text).not.toContain("뒷면");
+  });
+
+  it("못 읽은 칸이 결정을 뒤집을 수 있으면 판정하지 않는다 (60문항 중 47문항)", () => {
+    // 오답 3개로는 통과지만, 안 찍힌 13문항이 다 틀렸다면 16개라 탈락이다.
     const results = Array.from({ length: 47 }, (_, i) => ({
       no: String(i + 1),
       correct: i >= 3,
       expected: "",
       note: "",
     }));
-    const ok = compare(results, { wrong: [], passFail: "unmarked" }, "-8 까지 pass", 2, false);
-    expect(ok.ourVerdict).toBe("pass"); // 완전한 시험지였다면 통과
+    const c = compare(results, { wrong: [], passFail: "unmarked" }, "-8 까지 pass", 2, 13);
+    expect(c.robustToMissing).toBe(false);
+    expect(c.ourVerdict).toBeNull();
+    expect(c.nearBoundary).toBe(false);
+  });
 
-    const partial = compare(results, { wrong: [], passFail: "unmarked" }, "-8 까지 pass", 2, true);
-    expect(partial.ourVerdict).toBeNull(); // 일부만 찍혔으면 판정하지 않는다
-    expect(partial.nearBoundary).toBe(false);
+  it("못 읽은 칸이 다 틀려도 결정이 같으면 판정한다 (48칸 중 46칸)", () => {
+    // 실제 문법백지TEST: 오답 3개, 허용 6개. 못 읽은 2칸이 다 틀려도 5개라 통과.
+    // 여기서 판정을 막으면 과하다 — 조교가 멀쩡한 답안지에 막힌다.
+    const results = Array.from({ length: 46 }, (_, i) => ({
+      no: String(i + 1),
+      correct: i >= 3,
+      expected: "",
+      note: "",
+    }));
+    const c = compare(results, { wrong: [], passFail: "unmarked" }, "-6 까지 pass", 2, 2);
+    expect(c.missing).toBe(2);
+    expect(c.robustToMissing).toBe(true);
+    expect(c.ourVerdict).toBe("pass");
+  });
+
+  it("커트라인 비율은 인쇄된 전체 문항 기준으로 센다", () => {
+    // 46칸만 읽혔어도 10%는 48칸 기준이라야 한다
+    const results = Array.from({ length: 46 }, (_, i) => ({ no: String(i + 1), correct: true, expected: "", note: "" }));
+    expect(compare(results, { wrong: [], passFail: "unmarked" }, "-10%까지 PASS", 2, 2).cut).toBe(4);
   });
 
   it("앞뒤 두 장을 문항 번호로 합친다 — 순서를 사람이 맞출 필요가 없다", () => {

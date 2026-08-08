@@ -21,11 +21,12 @@ export function compare(
   cutLine?: string | null,
   boundary = 2,
   /**
-   * 시험지 일부만 찍혔으면 true. **PASS/FAIL을 내지 않습니다.**
-   * 60문항 중 47문항만 보고 "오답 3개니까 통과"라고 하면, 안 찍힌 13문항을
-   * 통째로 틀린 학생도 집에 보내게 됩니다.
+   * 인쇄된 문항 수보다 덜 읽힌 칸 수.
+   *
+   * 이만큼을 **전부 틀렸다고 가정해도** 결정이 그대로면 판정을 냅니다.
+   * 뒤집히면 내지 않습니다 — 안 읽힌 칸을 통째로 틀린 학생을 집에 보내게 됩니다.
    */
-  incomplete = false,
+  missing = 0,
 ): Comparison {
   const known = new Set(results.map((r) => r.no));
   const ours = new Set(results.filter((r) => !r.correct).map((r) => r.no));
@@ -37,23 +38,29 @@ export function compare(
   const sym = [...new Set([...ours, ...theirs])].filter((x) => ours.has(x) !== theirs.has(x));
   const agree = known.size - sym.length;
 
-  const cut = parseCut(cutLine, known.size);
-  const ourVerdict = incomplete ? null : verdict(ours.size, cut);
+  const cut = parseCut(cutLine, known.size + missing);
+  const plain = verdict(ours.size, cut);
+  // 못 읽은 칸이 전부 오답이었다면 어떻게 되는가. 결과가 같으면 판정해도 안전합니다.
+  const worst = verdict(ours.size + missing, cut);
+  const robustToMissing = missing === 0 || (plain !== null && plain === worst);
+
+  const ourVerdict = robustToMissing ? plain : null;
   // 선생님이 PASS/FAIL을 적어 두었으면 그게 우선입니다. 없으면 마크 개수로 셉니다.
-  const theirVerdict = incomplete
+  const theirVerdict = !robustToMissing
     ? null
     : marks.passFail === "pass" || marks.passFail === "fail"
       ? marks.passFail
       : verdict(theirs.size, cut);
 
   return {
-    incomplete,
+    missing,
+    robustToMissing,
     cut,
     ourVerdict,
     theirVerdict,
     verdictMatch: ourVerdict === null || theirVerdict === null ? null : ourVerdict === theirVerdict,
     // 커트라인 근처면 문항 오차 하나가 결정을 뒤집습니다. 그 장만 사람이 봅니다.
-    nearBoundary: !incomplete && cut !== null && Math.abs(ours.size - cut) <= boundary,
+    nearBoundary: robustToMissing && cut !== null && Math.abs(ours.size - cut) <= boundary,
     margin: cut === null ? null : ours.size - cut,
     n: known.size,
     agree,
