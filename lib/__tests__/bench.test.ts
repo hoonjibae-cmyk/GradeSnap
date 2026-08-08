@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffRuns, pct, summarize, type Run } from "../bench";
+import { bias, diffRuns, pct, summarize, type Run } from "../bench";
 
 /** `cells`는 [번호, 학생이 쓴 것], `wrong`은 오답 번호. */
 const run = (o: {
@@ -124,6 +124,34 @@ describe("모아서 세기", () => {
     const s = summarize([{ base, diff: d }]);
     expect(s.baseCost).toBeCloseTo(0.14);
     expect(s.trialCost).toBeCloseTo(0.03);
+  });
+
+  it("오답을 놓치는 쪽으로 쏠린 것을 잡아낸다", () => {
+    /*
+      Sonnet 5 + low 실측(2026-08-08). 판정은 100% 일치했는데 정오 불일치
+      7건 중 6건이 '대상이 놓친 오답'이었습니다. 통과할 학생을 더 통과시키는
+      것은 판정을 안 바꾸므로 일치율에 안 잡힙니다.
+    */
+    const base = run({ cells: [["1", "가"], ["2", "나"], ["3", "다"], ["4", "라"]], wrong: ["1", "2", "3"] });
+    const trial = run({ cells: [["1", "가"], ["2", "나"], ["3", "다"], ["4", "라"]], wrong: [] });
+    const s = summarize([{ base, diff: diffRuns(base, trial) }]);
+    expect(s.verdictAgree).toBe(1); // 판정은 같습니다
+    expect(s.itemsWrongOnlyBase).toBe(3);
+    expect(s.itemsWrongOnlyTrial).toBe(0);
+    expect(bias(s)).toBe("lenient");
+    expect(s.allComparedPass).toBe(true); // 표본에 판별력이 없다는 신호
+  });
+
+  it("몇 건 안 되면 방향을 말하지 않는다", () => {
+    const base = run({ cells: [["1", "가"], ["2", "나"]], wrong: ["1"] });
+    const trial = run({ cells: [["1", "가"], ["2", "나"]], wrong: [] });
+    expect(bias(summarize([{ base, diff: diffRuns(base, trial) }]))).toBe("balanced");
+  });
+
+  it("FAIL이 섞이면 표본에 판별력이 생긴다", () => {
+    const base = run({ cells: [["1", "가"]], wrong: ["1"], cut: 0 });
+    const s = summarize([{ base, diff: diffRuns(base, run({ cells: [["1", "가"]], wrong: ["1"], cut: 0 })) }]);
+    expect(s.allComparedPass).toBe(false);
   });
 
   it("분모가 0이면 100%가 아니라 '없음'이다", () => {

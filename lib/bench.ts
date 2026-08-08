@@ -138,6 +138,21 @@ export interface Summary {
   incomparable: number;
   itemsCompared: number;
   itemsAgree: number;
+  /**
+   * **대상이 놓친 오답** — 기준은 틀렸다고 봤는데 대상은 맞다고 한 문항.
+   * 이 숫자가 반대쪽보다 크게 많으면 대상 모델이 **관대**한 것입니다.
+   */
+  itemsWrongOnlyBase: number;
+  /** 대상만 오답으로 본 문항. 이쪽이 많으면 대상이 **엄격**한 것입니다. */
+  itemsWrongOnlyTrial: number;
+  /**
+   * 비교된 장이 **전부 PASS**였는가.
+   *
+   * 그렇다면 판정 일치율은 관대한 모델을 못 걸러냅니다 —
+   * **"전부 정답"이라고 답하는 모델도 100%가 나옵니다.**
+   * 표본이 판별력을 갖는지 알려주는 값입니다.
+   */
+  allComparedPass: boolean;
   writtenDiffs: number;
   missedCells: number;
   baseCost: number;
@@ -158,6 +173,9 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     incomparable: 0,
     itemsCompared: 0,
     itemsAgree: 0,
+    itemsWrongOnlyBase: 0,
+    itemsWrongOnlyTrial: 0,
+    allComparedPass: true,
     writtenDiffs: 0,
     missedCells: 0,
     baseCost: 0,
@@ -179,8 +197,13 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
         else s.flippedWithMargin++;
       }
     }
+    if (diff.verdictMatch !== null && (diff.baseVerdict !== "pass" || diff.trialVerdict !== "pass")) {
+      s.allComparedPass = false;
+    }
     s.itemsCompared += diff.n;
     s.itemsAgree += diff.agree;
+    s.itemsWrongOnlyBase += diff.wrongOnlyBase.length;
+    s.itemsWrongOnlyTrial += diff.wrongOnlyTrial.length;
     s.writtenDiffs += diff.written.length;
     s.missedCells += diff.onlyBase.length;
     s.baseCost += base.costUsd;
@@ -189,6 +212,24 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     s.trialMs += diff.latencyMs;
   }
   return s;
+}
+
+/**
+ * 정오 불일치가 **한쪽으로 쏠렸는가.**
+ *
+ * 잡음이면 위아래로 흩어집니다. 한 방향이면 채점 방침이 달라진 것이고,
+ * 그건 비용으로 살 수 있는 종류가 아닙니다. 특히 **관대한 쪽으로 쏠리면
+ * 판정 일치율에 안 잡힙니다** — 통과할 학생을 더 통과시켜도 결과는 같으므로.
+ *
+ * 실측(2026-08-08): Sonnet 5 + low는 7건 중 6건이 '대상이 놓친 오답'이었고
+ * 판정은 100% 일치했습니다.
+ */
+export function bias(s: Summary): "lenient" | "strict" | "balanced" {
+  const total = s.itemsWrongOnlyBase + s.itemsWrongOnlyTrial;
+  if (total < 3) return "balanced"; // 몇 건으로 방향을 말하지 않습니다
+  if (s.itemsWrongOnlyBase >= total * 0.75) return "lenient";
+  if (s.itemsWrongOnlyTrial >= total * 0.75) return "strict";
+  return "balanced";
 }
 
 /** 0으로 나누지 않고 비율을 씁니다. 분모가 0이면 비율이 없는 것이지 100%가 아닙니다. */

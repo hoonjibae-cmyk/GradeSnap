@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, Gate } from "@/components/Gate";
 import { itemsFor, sheetsOn, trialsOn } from "@/lib/db/queries";
 import type { ItemRow, ModelTrialRow, SheetRow, StaffRow } from "@/lib/db/schema";
-import { diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
+import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
 
 /**
  * 값싼 모델로 바꾸면 무엇을 잃는가 — 실측하는 화면.
@@ -141,6 +141,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     .map((s) => latest.get(s.id))
     .filter((t): t is ModelTrialRow => Boolean(t?.error));
   const sum = summarize(pairs.map((p) => ({ base: p.base, diff: p.diff })));
+  const lean = bias(sum);
   const done = latest.size;
 
   if (staff.role !== "admin") {
@@ -257,6 +258,41 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
               <p className="mt-1 text-xs text-amber-800">
                 커트라인에 걸려 있던 장은 <strong>같은 모델을 두 번 돌려도 갈립니다.</strong> 대상 모델의
                 흠으로 세지 않습니다 — 원래 사람이 확정해야 하는 자리입니다.
+              </p>
+            )}
+
+            {/*
+              판정 일치율의 맹점. **관대한 모델은 통과할 학생을 더 통과시켜도
+              판정이 그대로**라 100%가 나옵니다. 극단적으로 "전부 정답"이라고만
+              답해도 통과 답안지만 있는 표본에서는 만점입니다.
+            */}
+            {lean !== "balanced" && (
+              <p
+                className={`mt-2 rounded border p-2 text-xs ${
+                  lean === "lenient" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-amber-300 bg-amber-50 text-amber-900"
+                }`}
+              >
+                {lean === "lenient" ? (
+                  <>
+                    🔴 <strong>대상이 오답을 놓치는 쪽으로 치우쳤습니다.</strong> 대상이 놓친 오답{" "}
+                    {sum.itemsWrongOnlyBase} · 대상만 잡은 오답 {sum.itemsWrongOnlyTrial}.
+                    <br />
+                    <strong>판정 일치율은 이걸 못 잡습니다</strong> — 통과할 학생을 더 통과시켜도 판정은
+                    그대로이기 때문입니다.
+                    {sum.allComparedPass && " 게다가 비교된 장이 전부 PASS라, 이 표본은 관대한 모델을 걸러낼 힘이 없습니다."}
+                  </>
+                ) : (
+                  <>
+                    🔶 <strong>대상이 오답을 더 잡는 쪽으로 치우쳤습니다.</strong> 대상만 잡은 오답{" "}
+                    {sum.itemsWrongOnlyTrial} · 대상이 놓친 오답 {sum.itemsWrongOnlyBase}. 재시험이 늘어납니다.
+                  </>
+                )}
+              </p>
+            )}
+            {lean === "balanced" && sum.allComparedPass && sum.compared > 0 && (
+              <p className="mt-2 rounded border border-slate-300 bg-white p-2 text-xs text-slate-600">
+                비교된 장이 <strong>전부 PASS</strong>입니다. 판정 일치율은 FAIL이 섞여야 판별력이 생깁니다 —
+                커트라인 근처나 탈락한 답안지가 있는 날로도 돌려보십시오.
               </p>
             )}
           </div>
