@@ -24,6 +24,13 @@ export interface GradeResponse {
   /** 허용 오답 개수. 못 읽으면 null */
   cut: number | null;
   verdict: "pass" | "fail" | null;
+  /**
+   * 커트라인 ±2 안에 들어 **문항 하나가 결과를 뒤집을 수 있는** 상태.
+   * 이 답안지는 반드시 사람이 봐야 합니다 — 검수를 줄이더라도 여기는 남깁니다.
+   */
+  nearBoundary: boolean;
+  /** 오답 개수 - 허용 개수. 음수면 그만큼 여유가 있습니다. */
+  margin: number | null;
   pages: number;
   usage: Usage[];
   costUsd: number;
@@ -88,6 +95,8 @@ export async function POST(req: Request) {
       robustToMissing: cmp.robustToMissing,
       cut: cmp.cut,
       verdict: cmp.ourVerdict,
+      nearBoundary: cmp.nearBoundary,
+      margin: cmp.margin,
       pages: parts.length,
       usage,
       costUsd: costUsd(usage, usage[0].model),

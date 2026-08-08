@@ -307,3 +307,31 @@ describe("현장 테스트에서 나온 것 — 양면 시험지", () => {
     expect(parseCut("-8 까지 pass", 60)).toBe(8);
   });
 });
+
+describe("현장 테스트 2차 — 커트라인에 정확히 걸린 답안지", () => {
+  it("여유 0이면 경계선으로 잡는다", () => {
+    // 실제: 50문항, 커트라인 -7, 시스템이 오답 7개. 한 문항만 더면 FAIL이다.
+    const results = Array.from({ length: 50 }, (_, i) => ({
+      no: String(i + 1),
+      correct: i >= 7,
+      expected: "",
+      note: "",
+    }));
+    const c = compare(results, { wrong: [], passFail: "unmarked" }, "커트라인 -7개");
+    expect(c.ourVerdict).toBe("pass");
+    expect(c.margin).toBe(0);
+    expect(c.nearBoundary).toBe(true); // ← 사람이 반드시 본다
+  });
+
+  it("여유가 넉넉하면 경계선이 아니다", () => {
+    const results = Array.from({ length: 50 }, (_, i) => ({
+      no: String(i + 1),
+      correct: i >= 2,
+      expected: "",
+      note: "",
+    }));
+    const c = compare(results, { wrong: [], passFail: "unmarked" }, "커트라인 -7개");
+    expect(c.margin).toBe(-5);
+    expect(c.nearBoundary).toBe(false);
+  });
+});

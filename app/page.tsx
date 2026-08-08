@@ -201,6 +201,23 @@ export default function Home() {
                 ${res.costUsd.toFixed(3)} · {(res.usage.reduce((a, u) => a + u.latencyMs, 0) / 1000).toFixed(0)}초
               </span>
             </div>
+            {res.nearBoundary && v && (
+              <p className="mt-2 rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
+                🔶 <strong>커트라인에 걸렸습니다 — 반드시 확인하십시오.</strong>
+                <br />
+                오답 {wrong.length}개 / 허용 {cut}개
+                {res.margin === 0
+                  ? " — 여유가 없습니다. 한 문항만 더 틀렸으면 결과가 뒤집힙니다."
+                  : res.margin !== null && res.margin < 0
+                    ? ` — 여유 ${-res.margin}문항. 이 안에서 판정이 갈립니다.`
+                    : ""}
+                <br />
+                <span className="text-xs">
+                  문항 하나가 PASS/FAIL을 바꾸는 자리라, 채점이 조금만 어긋나도 학생이 잘못
+                  남거나 잘못 갑니다.
+                </span>
+              </p>
+            )}
             {res.missing > 0 && !res.robustToMissing && (
               <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
                 못 읽은 {res.missing}칸이 <strong>결과를 뒤집을 수 있어 PASS/FAIL을 내지 않았습니다.</strong>{" "}
