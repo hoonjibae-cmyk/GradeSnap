@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { GradeResponse } from "@/app/api/grade/route";
-import { prepareImage, type PreparedImage } from "@/lib/image";
+import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
 
 /**
  * M1 1단계 — 사진 한 장을 채점해 화면에 띄웁니다.
@@ -19,6 +19,12 @@ export default function Home() {
   const [strict, setStrict] = useState(false);
   // 커트라인이 빨간펜에 가려 안 읽힐 때만 씁니다. 시험 하나에 한 번입니다.
   const [cutOverride, setCutOverride] = useState("");
+
+  async function rotate(k: number, delta: 90 | -90) {
+    const next = await rotateBy(imgs[k], delta);
+    setImgs((p) => p.map((x, i) => (i === k ? next : x)));
+    setRes(null);
+  }
 
   async function onPick(files: FileList | null) {
     if (!files?.length) return;
@@ -95,7 +101,13 @@ export default function Home() {
               {imgs.map((im, k) => (
                 <figure key={k} className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={im.objectUrl} alt="" className="h-36 w-auto rounded-lg border border-slate-200 object-contain" />
+                  <img
+                    src={im.objectUrl}
+                    alt=""
+                    className={`h-36 w-auto rounded-lg border object-contain ${
+                      im.looksSideways ? "border-amber-400 border-2" : "border-slate-200"
+                    }`}
+                  />
                   <button
                     onClick={() => setImgs((p) => p.filter((_, i) => i !== k))}
                     className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs text-slate-600 shadow"
@@ -103,8 +115,16 @@ export default function Home() {
                   >
                     ✕
                   </button>
-                  <figcaption className="mt-1 text-center text-xs text-slate-500">
-                    {k + 1}쪽 · {(im.bytes / 1024).toFixed(0)}KB
+                  <figcaption className="mt-1 flex items-center justify-center gap-2 text-xs text-slate-500">
+                    <button onClick={() => void rotate(k, -90)} className="rounded border border-slate-300 px-1.5 py-0.5" aria-label="왼쪽으로 돌리기">
+                      ↺
+                    </button>
+                    <span>
+                      {k + 1}쪽 · {(im.bytes / 1024).toFixed(0)}KB
+                    </span>
+                    <button onClick={() => void rotate(k, 90)} className="rounded border border-slate-300 px-1.5 py-0.5" aria-label="오른쪽으로 돌리기">
+                      ↻
+                    </button>
                   </figcaption>
                 </figure>
               ))}
@@ -112,6 +132,12 @@ export default function Home() {
             <p className="mt-2 text-xs text-slate-500">
               모델이 볼 이미지입니다. 글씨가 읽히는지 확인하십시오.
             </p>
+            {imgs.some((i) => i.looksSideways) && (
+              <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+                가로로 누운 사진이 있습니다. 답안지가 <strong>세워져 보이도록 돌려 주십시오.</strong>{" "}
+                눕힌 채로도 읽기는 하지만 칸을 놓칠 수 있습니다.
+              </p>
+            )}
 
             <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
               <label className="flex items-center gap-2 text-sm">
