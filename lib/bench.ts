@@ -23,6 +23,9 @@ export interface Run {
   cut: number | null;
   nWrong: number;
   verdict: Verdict | null;
+  /** 커트라인 ±2 안. **여기서 갈린 판정은 모델 탓이 아닐 수 있습니다.** */
+  nearBoundary: boolean;
+  margin: number | null;
   costUsd: number;
   latencyMs: number;
 }
@@ -35,6 +38,15 @@ export interface Diff {
   verdictMatch: boolean | null;
   baseVerdict: Verdict | null;
   trialVerdict: Verdict | null;
+  /**
+   * 기준이 이미 커트라인에 걸려 있던 장인가.
+   *
+   * **같은 모델을 두 번 돌려도 여기서는 판정이 갈립니다**(2026-08-08 실측).
+   * 여유가 0인 답안지는 문항 하나만 흔들려도 뒤집히므로, 이런 장의 뒤집힘은
+   * 대상 모델의 흠이 아니라 **그 답안지의 성질**입니다.
+   */
+  baseNearBoundary: boolean;
+  baseMargin: number | null;
 
   /** 읽어낸 칸 수. 값싼 모델이 칸을 통째로 놓치면 여기서 먼저 드러납니다. */
   baseRead: number;
@@ -73,6 +85,8 @@ export function diffRuns(base: Run, trial: Run): Diff {
     verdictMatch: base.verdict === null || trial.verdict === null ? null : base.verdict === trial.verdict,
     baseVerdict: base.verdict,
     trialVerdict: trial.verdict,
+    baseNearBoundary: base.nearBoundary,
+    baseMargin: base.margin,
 
     baseRead: bw.size,
     trialRead: tw.size,
@@ -100,8 +114,18 @@ export interface Summary {
   /** 판정을 양쪽 다 낸 답안지 수. 일치율의 분모입니다. */
   compared: number;
   verdictAgree: number;
-  /** 판정이 갈린 답안지 — **이게 늘면 못 바꿉니다** */
+  /** 판정이 갈린 답안지 */
   flipped: number;
+  /**
+   * 그중 **기준이 이미 커트라인에 걸려 있던** 장. 같은 모델로 다시 돌려도
+   * 갈리는 자리라 대상 모델의 흠으로 세면 안 됩니다.
+   */
+  flippedAtBoundary: number;
+  /**
+   * 여유가 있었는데도 갈린 장. **이게 늘면 못 바꿉니다.**
+   * 모델을 바꿔서 생긴 차이라고 말할 수 있는 것은 이쪽뿐입니다.
+   */
+  flippedWithMargin: number;
   /**
    * **대상만** 판정을 못 낸 답안지. 값싼 모델이 커트라인을 못 읽으면 여기가 늡니다.
    * 이건 대상 모델의 흠입니다.
@@ -128,6 +152,8 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     compared: 0,
     verdictAgree: 0,
     flipped: 0,
+    flippedAtBoundary: 0,
+    flippedWithMargin: 0,
     trialUndecided: 0,
     incomparable: 0,
     itemsCompared: 0,
@@ -147,7 +173,11 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     } else {
       s.compared++;
       if (diff.verdictMatch) s.verdictAgree++;
-      else s.flipped++;
+      else {
+        s.flipped++;
+        if (diff.baseNearBoundary) s.flippedAtBoundary++;
+        else s.flippedWithMargin++;
+      }
     }
     s.itemsCompared += diff.n;
     s.itemsAgree += diff.agree;

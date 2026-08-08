@@ -116,6 +116,8 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       cut: s.cut,
       nWrong: s.n_wrong ?? 0,
       verdict: s.verdict,
+      nearBoundary: Boolean(s.near_boundary),
+      margin: s.margin,
       costUsd: Number(s.cost_usd ?? 0),
       latencyMs: (s.token_usage ?? []).reduce((a, u) => a + u.latencyMs, 0),
     };
@@ -127,6 +129,8 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       cut: t.cut,
       nWrong: t.n_wrong ?? 0,
       verdict: t.verdict,
+      nearBoundary: Boolean(t.near_boundary),
+      margin: t.margin,
       costUsd: Number(t.cost_usd ?? 0),
       latencyMs: t.latency_ms ?? 0,
     };
@@ -232,7 +236,12 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
               <span className="text-slate-500">
                 ({sum.verdictAgree}/{sum.compared}장)
               </span>
-              {sum.flipped > 0 && <span className="ml-2 font-bold text-rose-700">뒤집힘 {sum.flipped}장</span>}
+              {sum.flippedWithMargin > 0 && (
+                <span className="ml-2 font-bold text-rose-700">뒤집힘 {sum.flippedWithMargin}장</span>
+              )}
+              {sum.flippedAtBoundary > 0 && (
+                <span className="ml-2 text-amber-700">경계선에서 갈림 {sum.flippedAtBoundary}장</span>
+              )}
               {sum.trialUndecided > 0 && (
                 <span className="ml-2 text-amber-700">대상만 판정 못 냄 {sum.trialUndecided}장</span>
               )}
@@ -242,8 +251,14 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             </p>
             <p className="mt-1 text-xs text-slate-600">
               이 시스템이 내놓는 것은 PASS/FAIL 하나이고, 학생에게 일어나는 일도 그것뿐입니다.
-              <strong> 뒤집힌 장이 있으면 바꾸면 안 됩니다.</strong>
+              <strong> 여유가 있었는데도 뒤집힌 장이 있으면 바꾸면 안 됩니다.</strong>
             </p>
+            {sum.flippedAtBoundary > 0 && (
+              <p className="mt-1 text-xs text-amber-800">
+                커트라인에 걸려 있던 장은 <strong>같은 모델을 두 번 돌려도 갈립니다.</strong> 대상 모델의
+                흠으로 세지 않습니다 — 원래 사람이 확정해야 하는 자리입니다.
+              </p>
+            )}
           </div>
 
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -291,7 +306,12 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             </thead>
             <tbody>
               {pairs.map(({ sheet: s, diff: d }) => (
-                <tr key={s.id} className={`border-t border-slate-100 ${d.verdictMatch === false ? "bg-rose-50" : ""}`}>
+                <tr
+                  key={s.id}
+                  className={`border-t border-slate-100 ${
+                    d.verdictMatch === false ? (d.baseNearBoundary ? "bg-amber-50" : "bg-rose-50") : ""
+                  }`}
+                >
                   <td className="p-2">
                     <a href={`/sheets/${s.id}`} className="font-medium">
                       {s.student_name || "이름 못 읽음"}
@@ -310,6 +330,10 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                       <span className="text-amber-700">한쪽만</span>
                     ) : d.verdictMatch ? (
                       <span className="text-emerald-700">같음</span>
+                    ) : d.baseNearBoundary ? (
+                      <span className="font-medium text-amber-700" title="기준도 커트라인에 걸려 있던 장입니다">
+                        경계선 🔶
+                      </span>
                     ) : (
                       <span className="font-bold text-rose-700">뒤집힘</span>
                     )}

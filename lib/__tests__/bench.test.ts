@@ -7,6 +7,7 @@ const run = (o: {
   wrong: string[];
   cut?: number;
   verdict?: Run["verdict"];
+  nearBoundary?: boolean;
   costUsd?: number;
   latencyMs?: number;
 }): Run => ({
@@ -17,6 +18,8 @@ const run = (o: {
   cut: o.cut ?? 5,
   nWrong: o.wrong.length,
   verdict: o.verdict ?? (o.wrong.length <= (o.cut ?? 5) ? "pass" : "fail"),
+  nearBoundary: o.nearBoundary ?? false,
+  margin: o.wrong.length - (o.cut ?? 5),
   costUsd: o.costUsd ?? 0.1,
   latencyMs: o.latencyMs ?? 1000,
 });
@@ -99,6 +102,20 @@ describe("모아서 세기", () => {
     expect(s.incomparable).toBe(1);
     expect(s.trialUndecided).toBe(0);
     expect(s.compared).toBe(0);
+  });
+
+  it("경계선에서 갈린 것과 여유가 있는데 갈린 것을 나눈다", () => {
+    // 같은 모델을 두 번 돌려도 여유 0인 답안지는 갈립니다(2026-08-08 실측).
+    // 그걸 대상 모델의 흠으로 세면 멀쩡한 모델도 탈락합니다.
+    const edge = run({ cells: [["1", "가"]], wrong: [], cut: 0, nearBoundary: true });
+    const roomy = run({ cells: [["1", "가"]], wrong: [], cut: 9, nearBoundary: false });
+    const s = summarize([
+      { base: edge, diff: diffRuns(edge, run({ cells: [["1", "가"]], wrong: ["1"], cut: 0 })) },
+      { base: roomy, diff: diffRuns(roomy, { ...run({ cells: [["1", "가"]], wrong: [], cut: 9 }), verdict: "fail" }) },
+    ]);
+    expect(s.flipped).toBe(2);
+    expect(s.flippedAtBoundary).toBe(1);
+    expect(s.flippedWithMargin).toBe(1);
   });
 
   it("비용을 양쪽 다 더한다", () => {
