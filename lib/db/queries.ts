@@ -1,7 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
-import { toItemRows, type ItemRow, type SheetPageRow, type SheetRow, type StaffRow, type WrongItemRow } from "./schema";
+import {
+  toItemRows,
+  type ItemRow,
+  type ModelTrialRow,
+  type SheetPageRow,
+  type SheetRow,
+  type StaffRow,
+  type WrongItemRow,
+} from "./schema";
 
 /**
  * DB에 닿는 곳은 전부 여기입니다. 화면에서 직접 `.from('sheets')`를 부르지
@@ -141,6 +149,12 @@ export async function itemsOf(db: SupabaseClient, sheetId: string): Promise<Item
   return ok(await db.from("items").select("*").eq("sheet_id", sheetId).order("seq"), "문항") as ItemRow[];
 }
 
+/** 여러 답안지의 문항을 한 번에. 모델 비교 화면이 장마다 질의하지 않도록. */
+export async function itemsFor(db: SupabaseClient, sheetIds: string[]): Promise<ItemRow[]> {
+  if (!sheetIds.length) return [];
+  return ok(await db.from("items").select("*").in("sheet_id", sheetIds).order("seq"), "문항") as ItemRow[];
+}
+
 /** 사진을 잠깐 볼 수 있는 주소. 비공개 버킷이라 서명 URL로만 봅니다. */
 export async function pageUrls(db: SupabaseClient, sheetId: string, seconds = 600): Promise<string[]> {
   const pages = await pagesOf(db, sheetId);
@@ -237,6 +251,28 @@ export async function downloadPage(db: SupabaseClient, path: string): Promise<st
   const res = await db.storage.from(BUCKET).download(path);
   if (res.error || !res.data) throw new Error(`사진 내려받기(${path}): ${res.error?.message ?? "없음"}`);
   return Buffer.from(await res.data.arrayBuffer()).toString("base64");
+}
+
+// ---------------------------------------------------------------------------
+// 모델 비교 실험
+// ---------------------------------------------------------------------------
+
+/** 그날 답안지들에 대해 돌려본 기록. 최신 것이 앞에 옵니다. */
+export async function trialsOn(db: SupabaseClient, sheetIds: string[]): Promise<ModelTrialRow[]> {
+  if (!sheetIds.length) return [];
+  return ok(
+    await db.from("model_trials").select("*").in("sheet_id", sheetIds).order("created_at", { ascending: false }),
+    "실험 기록",
+  ) as ModelTrialRow[];
+}
+
+export async function saveTrial(
+  db: SupabaseClient,
+  row: Omit<ModelTrialRow, "id" | "created_at" | "created_by">,
+): Promise<void> {
+  const { data: u } = await db.auth.getUser();
+  const res = await db.from("model_trials").insert({ ...row, created_by: u.user?.id ?? null });
+  if (res.error) throw new Error(`실험 기록: ${res.error.message}`);
 }
 
 export interface Grading {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compare } from "../../grading/compare";
+import { compare } from "@/lib/grading/compare";
 import type { Item, JudgeResult } from "@/lib/grading/types";
 import { needsReview, toItemRows, toJudgeResults } from "../schema";
 import type { ItemRow, SheetRow } from "../schema";

@@ -112,6 +112,32 @@ export interface ItemRow {
 /** 저장할 때 쓰는 모양. 생성 칼럼(`final_correct`·`overturned`)은 빠집니다. */
 export type ItemInsert = Omit<ItemRow, "id" | "final_correct" | "overturned">;
 
+/**
+ * 값싼 모델로 다시 채점해 본 기록. **실제 채점 결과와 섞지 않습니다** —
+ * `sheets`·`items`는 학생에게 나간 것이고, 여기는 "만약 다른 모델이었다면"입니다.
+ */
+export interface ModelTrialRow {
+  id: string;
+  sheet_id: string;
+  model: string;
+  effort: string;
+  transcript: { sheet: SheetHead; items: Item[] } | null;
+  results: JudgeResult[] | null;
+  warnings: Warning[];
+  missing: number | null;
+  cut: number | null;
+  n_wrong: number | null;
+  verdict: Verdict | null;
+  near_boundary: boolean | null;
+  margin: number | null;
+  token_usage: Usage[] | null;
+  cost_usd: number | null;
+  latency_ms: number | null;
+  error: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
 /** `wrong_items` 뷰 한 줄. 선생님이 고친 값이 반영된 오답입니다. */
 export interface WrongItemRow {
   sheet_id: string;

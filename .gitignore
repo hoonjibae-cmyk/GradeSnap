@@ -4,6 +4,9 @@ samples/
 *.jpg
 *.png
 !docs/assets/*.png
+# 앱 아이콘은 학생 사진이 아니라 제품 자산입니다
+!app/*.png
+!public/*.png
 
 # 환경 변수
 .env

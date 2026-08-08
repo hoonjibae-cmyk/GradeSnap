@@ -118,6 +118,11 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
         <a href="/quick" className="text-slate-500 underline">
           빠른 시험
         </a>
+        {staff.role === "admin" && (
+          <a href="/bench" className="text-slate-500 underline">
+            모델 비교
+          </a>
+        )}
       </Bar>
 
       {err && (

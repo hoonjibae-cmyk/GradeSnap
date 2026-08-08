@@ -1,0 +1,127 @@
+import { NextResponse } from "next/server";
+import { anthropic, costUsd } from "@/lib/grading/client";
+import { compare } from "@/lib/grading/compare";
+import { checkDrift, missingCount } from "@/lib/grading/drift";
+import { mergeTranscripts } from "@/lib/grading/merge";
+import { judge, transcribe } from "@/lib/grading/stages";
+import { bearer, userClient } from "@/lib/db/client";
+import { downloadPage, getSheet, pagesOf, saveTrial } from "@/lib/db/queries";
+import type { CallOptions } from "@/lib/grading/client";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+/** 실험에 쓸 수 있는 조합. 아무 문자열이나 받으면 오타로 돈이 나갑니다. */
+const MODELS = ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] as const;
+const EFFORTS = ["low", "medium", "high"] as const;
+
+/**
+ * **같은 답안지를 다른 모델로 다시 채점해 봅니다.**
+ *
+ * 실제 채점 결과(`sheets`·`items`)는 건드리지 않습니다. 결과는 `model_trials`에
+ * 따로 쌓이고, 비교는 `/bench` 화면이 합니다. 섞으면 학생에게 나간 판정이
+ * 실험 때문에 바뀝니다.
+ *
+ * 커트라인과 철자 방침은 **실제 채점과 같은 규칙**을 씁니다. 그래야 갈린
+ * 이유가 모델 차이로 좁혀집니다 — 조건을 바꿔놓고 비교하면 아무것도 못 배웁니다.
+ */
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const token = bearer(req);
+  if (!token) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
+  const { id } = await params;
+  let model: string;
+  let effort: string;
+  try {
+    const body = (await req.json()) as { model?: string; effort?: string };
+    model = String(body?.model ?? "");
+    effort = String(body?.effort ?? "high");
+  } catch {
+    return NextResponse.json({ error: "요청 본문을 읽을 수 없습니다." }, { status: 400 });
+  }
+  if (!MODELS.includes(model as (typeof MODELS)[number])) {
+    return NextResponse.json({ error: `모르는 모델입니다: ${model}` }, { status: 400 });
+  }
+  if (!EFFORTS.includes(effort as (typeof EFFORTS)[number])) {
+    return NextResponse.json({ error: `모르는 사고 강도입니다: ${effort}` }, { status: 400 });
+  }
+
+  const db = userClient(token);
+  const opts: CallOptions = { model, effort: effort as CallOptions["effort"] };
+  const t0 = Date.now();
+
+  try {
+    const sheet = await getSheet(db, id);
+    const pages = await pagesOf(db, id);
+    if (!pages.length) throw new Error("사진이 없습니다. 90일이 지나 지워졌을 수 있습니다.");
+
+    const client = anthropic();
+    const parts = [];
+    const usage = [];
+    for (const p of pages) {
+      const data = await downloadPage(db, p.storage_path);
+      const r = await transcribe(client, { mediaType: "image/jpeg", data }, opts);
+      parts.push(r.transcript);
+      usage.push(r.usage);
+    }
+
+    const transcript = mergeTranscripts(parts);
+    if (sheet.cut_line?.trim()) transcript.sheet.cutLine = sheet.cut_line.trim();
+
+    const warnings = checkDrift(transcript, undefined, pages.length);
+    const missing = missingCount(transcript);
+
+    const { results, usage: u2 } = await judge(client, transcript, sheet.strict_spelling, opts);
+    usage.push(u2);
+    const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
+
+    await saveTrial(db, {
+      sheet_id: id,
+      model,
+      effort,
+      transcript,
+      results,
+      warnings,
+      missing,
+      cut: cmp.cut,
+      n_wrong: cmp.oursWrong.length,
+      verdict: cmp.ourVerdict,
+      near_boundary: cmp.nearBoundary,
+      margin: cmp.margin,
+      token_usage: usage,
+      cost_usd: costUsd(usage, model),
+      latency_ms: Date.now() - t0,
+      error: null,
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    // **거절도 스키마 실패도 결과입니다.** 값싼 모델이 못 해내는 것을 지우면
+    // "돌려봤더니 잘 되더라"는 잘못된 인상만 남습니다.
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[trial]", id, model, message);
+    try {
+      await saveTrial(db, {
+        sheet_id: id,
+        model,
+        effort,
+        transcript: null,
+        results: null,
+        warnings: [],
+        missing: null,
+        cut: null,
+        n_wrong: null,
+        verdict: null,
+        near_boundary: null,
+        margin: null,
+        token_usage: null,
+        cost_usd: null,
+        latency_ms: Date.now() - t0,
+        error: message.slice(0, 500),
+      });
+    } catch {
+      /* 기록조차 못 남기면 응답으로만 알립니다 */
+    }
+    return NextResponse.json({ ok: false, error: message });
+  }
+}
