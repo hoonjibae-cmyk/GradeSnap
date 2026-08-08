@@ -114,4 +114,10 @@ export interface Usage {
   inputTokens: number;
   outputTokens: number;
   model: string;
+  /**
+   * 사고 강도. **어떤 설정으로 채점됐는지가 나중에 필요합니다** —
+   * 기본값을 바꾼 뒤 결과가 나빠지면 언제부터인지 알아야 되돌립니다.
+   * 옛 기록에는 없으므로 선택입니다.
+   */
+  effort?: string;
 }

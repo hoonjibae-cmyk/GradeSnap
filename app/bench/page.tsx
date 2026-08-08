@@ -108,9 +108,12 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       여기서 답하려는 질문은 "값싼 모델이 지금 나가는 결과를 재현하는가"입니다.
       선생님 판정을 기준으로 두면 두 모델의 차이와 선생님의 수정이 뒤섞입니다.
     */
+    // 기준의 설정은 **그 답안지를 실제로 채점한 값**입니다. 고정해두면
+    // 운영 기본값을 바꾼 뒤 화면이 거짓말을 합니다.
+    const baseUsage = (s.token_usage ?? [])[0];
     const base: Run = {
-      model: "claude-opus-5",
-      effort: "high",
+      model: baseUsage?.model ?? "claude-opus-5",
+      effort: baseUsage?.effort ?? "high",
       items: rows.map((i) => ({ no: i.no, written: i.written })),
       results: rows.map((i) => ({ no: i.no, correct: i.correct ?? false, expected: i.expected, note: i.note })),
       cut: s.cut,
@@ -224,7 +227,14 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             </button>
           )}
         </div>
-        <p className="mt-2 text-xs text-slate-500">{MODELS.find((m) => m.id === model)?.note}</p>
+        <p className="mt-2 text-xs text-slate-500">
+          {MODELS.find((m) => m.id === model)?.note}
+          {pairs.length > 0 && (
+            <span className="ml-2">
+              · 기준은 {pairs[0].base.model} · {pairs[0].base.effort}
+            </span>
+          )}
+        </p>
       </section>
 
       {done > 0 && (
@@ -331,7 +341,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="p-2 font-medium">학생</th>
-                <th className="p-2 font-medium">기준(Opus)</th>
+                <th className="p-2 font-medium">기준</th>
                 <th className="p-2 font-medium">대상</th>
                 <th className="p-2 font-medium">판정</th>
                 <th className="p-2 font-medium">읽은 칸</th>
