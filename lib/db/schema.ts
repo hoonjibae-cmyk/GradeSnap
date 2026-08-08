@@ -9,8 +9,13 @@
 import type { Direction, Item, JudgeResult, Sheet as SheetHead, Usage, Verdict, Warning } from "@/lib/grading/types";
 
 export type Role = "assistant" | "teacher" | "admin";
-/** queued → running → graded → confirmed. 실패하면 failed. */
-export type SheetStatus = "queued" | "running" | "graded" | "failed" | "confirmed";
+/**
+ * uploading → queued → running → graded → confirmed. 실패하면 failed.
+ *
+ * `uploading`이 따로 있는 이유: 행을 먼저 만들어야 사진 행이 그걸 가리킬 수
+ * 있는데, 그 사이에 `queued`면 **사진 없는 답안지를 채점하러 갑니다.**
+ */
+export type SheetStatus = "uploading" | "queued" | "running" | "graded" | "failed" | "confirmed";
 
 export interface StaffRow {
   id: string;
@@ -104,6 +109,9 @@ export interface ItemRow {
 export interface ExamProgressRow {
   exam_id: string;
   total: number;
+  /** 조교가 아직 올리는 중 */
+  uploading: number;
+  /** 기계가 할 차례 */
   pending: number;
   graded: number;
   confirmed: number;
