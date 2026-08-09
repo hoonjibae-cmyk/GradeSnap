@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
-import { anthropic, costUsd } from "@/lib/grading/client";
+import { CATALOG, clientFor, costUsd, info } from "@/lib/grading/client";
 import { compare } from "@/lib/grading/compare";
 import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import { bearer, userClient } from "@/lib/db/client";
-import { downloadPage, getSheet, pagesOf, recordUsage, saveTrial } from "@/lib/db/queries";
+import { downloadPage, getSheet, me, pagesOf, recordUsage, saveTrial } from "@/lib/db/queries";
 import type { CallOptions } from "@/lib/grading/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /** 실험에 쓸 수 있는 조합. 아무 문자열이나 받으면 오타로 돈이 나갑니다. */
-const MODELS = ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] as const;
 const EFFORTS = ["low", "medium", "high"] as const;
 
 /**
@@ -24,6 +23,10 @@ const EFFORTS = ["low", "medium", "high"] as const;
  *
  * 커트라인과 철자 방침은 **실제 채점과 같은 규칙**을 씁니다. 그래야 갈린
  * 이유가 모델 차이로 좁혀집니다 — 조건을 바꿔놓고 비교하면 아무것도 못 배웁니다.
+ *
+ * 🔴 **관리자만** 부를 수 있습니다. 돈이 나가는 호출이고, GPT를 고르면
+ * 학생 답안지가 동의서에 없는 회사로 나갑니다(docs/14 §14.3). 화면에서만
+ * 막아두면 주소를 아는 사람은 그대로 부를 수 있습니다.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const token = bearer(req);
@@ -39,14 +42,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } catch {
     return NextResponse.json({ error: "요청 본문을 읽을 수 없습니다." }, { status: 400 });
   }
-  if (!MODELS.includes(model as (typeof MODELS)[number])) {
-    return NextResponse.json({ error: `모르는 모델입니다: ${model}` }, { status: 400 });
+  if (!info(model)) {
+    return NextResponse.json(
+      { error: `모르는 모델입니다: ${model} (가능: ${CATALOG.map((m) => m.id).join(", ")})` },
+      { status: 400 },
+    );
   }
   if (!EFFORTS.includes(effort as (typeof EFFORTS)[number])) {
     return NextResponse.json({ error: `모르는 사고 강도입니다: ${effort}` }, { status: 400 });
   }
 
   const db = userClient(token);
+  const staff = await me(db).catch(() => null);
+  if (!staff?.active || staff.role !== "admin") {
+    return NextResponse.json({ error: "모델 비교는 관리자만 돌릴 수 있습니다." }, { status: 403 });
+  }
+
   const opts: CallOptions = { model, effort: effort as CallOptions["effort"] };
   const t0 = Date.now();
 
@@ -55,7 +66,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const pages = await pagesOf(db, id);
     if (!pages.length) throw new Error("사진이 없습니다. 90일이 지나 지워졌을 수 있습니다.");
 
-    const client = anthropic();
+    const client = clientFor(model);
     const parts = [];
     const usage = [];
     for (const p of pages) {
@@ -75,6 +86,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     usage.push(u2);
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
 
+    // 단가를 모르는 모델은 **빈칸**입니다. 0으로 적으면 화면에서 공짜로 보입니다.
+    const cost = costUsd(usage, model);
+
     await saveTrial(db, {
       sheet_id: id,
       model,
@@ -89,7 +103,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       near_boundary: cmp.nearBoundary,
       margin: cmp.margin,
       token_usage: usage,
-      cost_usd: costUsd(usage, model),
+      cost_usd: cost,
       latency_ms: Date.now() - t0,
       error: null,
     });
@@ -98,7 +112,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       kind: "trial",
       sheet_id: id,
       pages: pages.length,
-      cost_usd: costUsd(usage, model),
+      cost_usd: cost,
       latency_ms: Date.now() - t0,
       model,
       effort,

@@ -35,7 +35,8 @@ export interface GradeResponse {
   margin: number | null;
   pages: number;
   usage: Usage[];
-  costUsd: number;
+  /** 단가를 모르는 모델이면 null */
+  costUsd: number | null;
 }
 
 interface GradeRequest {
@@ -97,6 +98,7 @@ export async function POST(req: Request) {
     // 전사와 판정을 **따로** 부릅니다. 한 번에 시키면 틀린 답을 정답으로 고쳐 읽습니다.
     const { results, usage: u2 } = await judge(client, transcript, body.strictSpelling ?? false);
     usage.push(u2);
+    const cost = costUsd(usage, usage[0].model);
     // 판정은 대조 로직에 맡깁니다 — 화면과 서버가 다른 규칙을 쓰면 언젠가 어긋납니다.
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
 
@@ -105,7 +107,7 @@ export async function POST(req: Request) {
       kind: "quick",
       sheet_id: null,
       pages: parts.length,
-      cost_usd: costUsd(usage, usage[0].model),
+      cost_usd: cost,
       latency_ms: usage.reduce((a, u) => a + u.latencyMs, 0),
       model: usage[0].model,
       effort: usage[0].effort ?? null,
@@ -124,7 +126,7 @@ export async function POST(req: Request) {
       margin: cmp.margin,
       pages: parts.length,
       usage,
-      costUsd: costUsd(usage, usage[0].model),
+      costUsd: cost,
     };
     return NextResponse.json(res);
   } catch (e) {

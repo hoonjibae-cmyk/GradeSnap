@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { openai } from "./openai";
+import { CATALOG, ids, info, type CallOptions, type JsonRequest, type ModelClient } from "./provider";
 import type { Usage } from "./types";
+
+export { costUsd, knownPrice, CATALOG, info } from "./provider";
+export type { CallOptions, ModelClient, ModelInfo, Provider } from "./provider";
 
 /**
  * 채점에 쓰는 모델과 사고 강도.
@@ -13,8 +18,13 @@ import type { Usage } from "./types";
  *   GRADING_EFFORT=high        ← Vercel 환경 변수만 바꾸고 재배포
  *
  * 오타로 엉뚱한 모델에 돈이 나가지 않도록 아는 값만 받습니다.
+ *
+ * 🔴 **여기서 받는 것은 Anthropic 모델뿐입니다.** GPT는 `/bench` 실험에서만
+ * 꺼내 쓸 수 있습니다. 실제 채점을 GPT로 돌리면 학생 답안지가 동의서에 없는
+ * 회사로 나가는데(docs/14 §14.3 — 국외 이전 대상은 Anthropic PBC 하나),
+ * 그건 환경 변수 한 줄로 넘어가면 안 되는 선입니다. 회사를 바꾸려면 동의서를
+ * 고치고 동의를 다시 받은 뒤 이 목록을 고치십시오.
  */
-const MODELS = ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] as const;
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T, name: string): T {
@@ -26,7 +36,7 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
   return v as T;
 }
 
-export const DEFAULT_MODEL = pick(process.env.GRADING_MODEL, MODELS, "claude-opus-5", "GRADING_MODEL");
+export const DEFAULT_MODEL = pick(process.env.GRADING_MODEL, ids("anthropic"), "claude-opus-5", "GRADING_MODEL");
 /** 실측 근거는 docs/13 §13.15. 강도는 **판정 단계만** 건드립니다 — 전사는 안 변합니다. */
 export const DEFAULT_EFFORT = pick(process.env.GRADING_EFFORT, EFFORTS, "low", "GRADING_EFFORT");
 
@@ -36,72 +46,55 @@ export const DEFAULT_EFFORT = pick(process.env.GRADING_EFFORT, EFFORTS, "low", "
  */
 export const MAX_EDGE = 2576;
 
-/** 1M 토큰당 달러. 실측 장당 $0.217(Opus 5, 입력 ~5,000 / 출력 ~3,300). */
-const PRICING: Record<string, [number, number]> = {
-  "claude-opus-5": [5.0, 25.0],
-  "claude-sonnet-5": [3.0, 15.0],
-  "claude-haiku-4-5": [1.0, 5.0],
-};
-
-export function costUsd(usages: Usage[], model: string): number {
-  const [pin, pout] = PRICING[model] ?? [0, 0];
-  const i = usages.reduce((a, u) => a + u.inputTokens, 0);
-  const o = usages.reduce((a, u) => a + u.outputTokens, 0);
-  return (i * pin + o * pout) / 1_000_000;
-}
-
-export function anthropic(): Anthropic {
+export function anthropic(): ModelClient {
   const key = (process.env.ANTHROPIC_API_KEY ?? "").trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY가 설정되지 않았습니다.");
   if (!key.startsWith("sk-ant-")) {
     throw new Error(`ANTHROPIC_API_KEY가 'sk-ant-'로 시작하지 않습니다 (받은 값: ${key.slice(0, 12)}…).`);
   }
-  return new Anthropic({ apiKey: key });
+  const client = new Anthropic({ apiKey: key });
+  return { provider: "anthropic", callJson: (req, opts) => callJson(client, req, opts) };
 }
 
-export interface CallOptions {
-  model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
-  /**
-   * 기본은 켬. 실측에서 전사 단계는 사고를 켜도 출력 토큰이 그대로였습니다
-   * (adaptive가 알아서 안 씁니다). 마크 판독처럼 따져야 하는 단계에는 필요합니다.
-   */
-  thinking?: boolean;
+/**
+ * 모델 이름만 주면 알아서 그 회사 어댑터를 엽니다.
+ *
+ * 부르는 쪽(`/api/sheets/[id]/trial`)이 회사를 알 필요가 없어야 합니다 —
+ * 알게 두면 모델을 하나 더할 때마다 라우트에 if가 붙습니다.
+ */
+export function clientFor(model: string): ModelClient {
+  const m = info(model);
+  if (!m) throw new Error(`모르는 모델입니다: ${model} (가능: ${CATALOG.map((x) => x.id).join(", ")})`);
+  return m.provider === "openai" ? openai() : anthropic();
 }
 
 /** 이미지 + 텍스트 → 스키마에 맞는 JSON. 실패는 그대로 던집니다(상위에서 job에 기록). */
-export async function callJson<T>(
+async function callJson<T>(
   client: Anthropic,
-  args: {
-    system: string;
-    text: string;
-    /** base64 PNG/JPEG. 없으면 텍스트만 보냅니다(판정 단계). */
-    images?: { mediaType: "image/png" | "image/jpeg"; data: string }[];
-    schema: unknown;
-  },
+  req: JsonRequest,
   opts: CallOptions = {},
 ): Promise<{ data: T; usage: Usage }> {
   const model = opts.model ?? DEFAULT_MODEL;
   const content: Anthropic.ContentBlockParam[] = [
-    ...(args.images ?? []).map(
+    ...(req.images ?? []).map(
       (im): Anthropic.ContentBlockParam => ({
         type: "image",
         source: { type: "base64", media_type: im.mediaType, data: im.data },
       }),
     ),
-    { type: "text", text: args.text },
+    { type: "text", text: req.text },
   ];
 
   const t0 = Date.now();
   const msg = await client.messages.create({
     model,
     max_tokens: 16000,
-    system: args.system,
+    system: req.system,
     messages: [{ role: "user", content }],
     ...(opts.thinking === false ? { thinking: { type: "disabled" as const } } : {}),
     output_config: {
       effort: opts.effort ?? DEFAULT_EFFORT,
-      format: { type: "json_schema", schema: args.schema as Record<string, unknown> },
+      format: { type: "json_schema", schema: req.schema as Record<string, unknown> },
     },
   });
 

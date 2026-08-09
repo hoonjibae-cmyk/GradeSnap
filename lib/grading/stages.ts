@@ -1,5 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { callJson, type CallOptions } from "./client";
+import type { CallOptions, ImageInput, ModelClient } from "./provider";
 import { JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeSystem } from "./prompts";
 import { JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
 import type { Item, JudgeResult, MarkReading, Sheet, Transcript, Usage } from "./types";
@@ -18,12 +17,11 @@ interface RawTranscript {
 }
 
 export async function transcribe(
-  client: Anthropic,
-  image: { mediaType: "image/png" | "image/jpeg"; data: string },
+  client: ModelClient,
+  image: ImageInput,
   opts?: CallOptions,
 ): Promise<{ transcript: Transcript; usage: Usage }> {
-  const { data, usage } = await callJson<RawTranscript>(
-    client,
+  const { data, usage } = await client.callJson<RawTranscript>(
     {
       system: TRANSCRIBE_SYSTEM,
       text: "이 답안지의 모든 문항을 전사하십시오. 빈칸도 빠짐없이 포함하십시오.",
@@ -52,8 +50,8 @@ interface RawMarks {
 }
 
 export async function readMarks(
-  client: Anthropic,
-  image: { mediaType: "image/png" | "image/jpeg"; data: string },
+  client: ModelClient,
+  image: ImageInput,
   /**
    * 전사된 번호 목록. 주면 **그 안에서만** 고르게 합니다.
    * 안 주면 '1) 동명사만 쓰는 동사 - decide' 같은 산문이 돌아와 대조가 통째로 깨집니다.
@@ -70,8 +68,7 @@ export async function readMarks(
       itemNumbers.join(", ");
   }
 
-  const { data, usage } = await callJson<RawMarks>(
-    client,
+  const { data, usage } = await client.callJson<RawMarks>(
     { system: MARKS_SYSTEM, text, images: [image], schema: MARKS_SCHEMA },
     opts,
   );
@@ -92,7 +89,7 @@ export async function readMarks(
 }
 
 export async function judge(
-  client: Anthropic,
+  client: ModelClient,
   transcript: Transcript,
   /** 철자를 엄격히 볼 것인가. **교육 방침이라 시험 단위로 정합니다.** */
   strictSpelling = false,
@@ -107,8 +104,7 @@ export async function judge(
     legible: i.legible,
   }));
 
-  const { data, usage } = await callJson<{ results: JudgeResult[] }>(
-    client,
+  const { data, usage } = await client.callJson<{ results: JudgeResult[] }>(
     {
       system: judgeSystem(strictSpelling),
       text: "아래는 한 답안지를 전사한 결과입니다. 문항마다 정오를 판정하십시오.\n\n" + JSON.stringify(payload, null, 1),

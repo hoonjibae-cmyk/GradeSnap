@@ -472,7 +472,8 @@ export interface Grading {
   nearBoundary: boolean;
   margin: number | null;
   usage: Usage[];
-  costUsd: number;
+  /** 단가를 모르는 모델이면 null. 0으로 적으면 공짜로 보입니다. */
+  costUsd: number | null;
 }
 
 /**

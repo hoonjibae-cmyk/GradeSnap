@@ -76,6 +76,7 @@ export async function POST(req: Request) {
 
     const { results, usage: u2 } = await judge(client, transcript, sheet.strict_spelling);
     usage.push(u2);
+    const cost = costUsd(usage, usage[0].model);
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
 
     await saveGrading(db, id, {
@@ -90,14 +91,14 @@ export async function POST(req: Request) {
       nearBoundary: cmp.nearBoundary,
       margin: cmp.margin,
       usage,
-      costUsd: costUsd(usage, usage[0].model),
+      costUsd: cost,
     });
 
     await recordUsage(db, {
       kind: "grade",
       sheet_id: id,
       pages: pages.length,
-      cost_usd: costUsd(usage, usage[0].model),
+      cost_usd: cost,
       latency_ms: usage.reduce((a, u) => a + u.latencyMs, 0),
       model: usage[0].model,
       effort: usage[0].effort ?? null,

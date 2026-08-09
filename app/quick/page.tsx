@@ -211,7 +211,8 @@ function Quick({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                 {cut !== null && <span className="text-slate-500"> · 허용 {cut}</span>}
               </span>
               <span className="text-xs text-slate-500">
-                ${res.costUsd.toFixed(3)} · {(res.usage.reduce((a, u) => a + u.latencyMs, 0) / 1000).toFixed(0)}초
+                {res.costUsd === null ? "단가 미상" : `$${res.costUsd.toFixed(3)}`} ·{" "}
+                {(res.usage.reduce((a, u) => a + u.latencyMs, 0) / 1000).toFixed(0)}초
               </span>
             </div>
             {res.nearBoundary && v && (

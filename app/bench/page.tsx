@@ -6,6 +6,7 @@ import { Bar, Gate } from "@/components/Gate";
 import { itemsFor, sheetsOn, trialsOn } from "@/lib/db/queries";
 import type { ItemRow, ModelTrialRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
+import { CATALOG, info } from "@/lib/grading/provider";
 
 /**
  * 값싼 모델로 바꾸면 무엇을 잃는가 — 실측하는 화면.
@@ -17,11 +18,8 @@ export default function BenchPage() {
   return <Gate>{(db, staff) => <Bench db={db} staff={staff} />}</Gate>;
 }
 
-const MODELS = [
-  { id: "claude-sonnet-5", label: "Sonnet 5", note: "입력 3/출력 15 — Opus의 60%" },
-  { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "입력 1/출력 5 — Opus의 20%" },
-  { id: "claude-opus-5", label: "Opus 5 (같은 모델)", note: "사고 강도만 낮춰볼 때" },
-];
+/** 목록은 `lib/grading/provider.ts` 한 곳에서 옵니다 — 화면과 서버가 갈리면 안 됩니다. */
+const MODELS = CATALOG;
 const EFFORTS = ["high", "medium", "low"];
 /** 실험은 급하지 않습니다. 실제 채점이 밀리지 않게 둘만 씁니다. */
 const LANES = 2;
@@ -146,6 +144,12 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   const sum = summarize(pairs.map((p) => ({ base: p.base, diff: p.diff })));
   const lean = bias(sum);
   const done = latest.size;
+  const chosen = info(model);
+  /*
+    단가를 모르는 모델은 비용이 **빈칸**으로 저장됩니다. 그걸 0으로 더하면
+    합계가 `$0.000`이 되고, 비교하려고 만든 화면이 "GPT가 공짜"라고 말합니다.
+  */
+  const noPrice = pairs.filter((p) => p.trial.cost_usd === null).length;
 
   if (staff.role !== "admin") {
     return (
@@ -224,13 +228,29 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           )}
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          {MODELS.find((m) => m.id === model)?.note}
+          {chosen?.note}
           {pairs.length > 0 && (
             <span className="ml-2">
               · 기준은 {pairs[0].base.model} · {pairs[0].base.effort}
             </span>
           )}
         </p>
+
+        {/*
+          🔴 GPT를 고르면 **학생 답안지 사진이 OpenAI로 나갑니다.**
+          지금 동의서에 적힌 국외 이전 대상은 Anthropic PBC 하나뿐입니다
+          (docs/14 §14.3). 이건 실험 버튼 하나로 넘어갈 선이 아니라
+          누르기 전에 보여야 하는 사실입니다.
+        */}
+        {chosen?.provider === "openai" && (
+          <p className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
+            🔴 <strong>이 모델은 OpenAI로 나갑니다.</strong> 개인정보 동의서에 적어둔 국외 이전 대상은
+            지금 <strong>Anthropic PBC 하나</strong>입니다. 동의서를 아직 학부모에게 돌리지 않았다면
+            돌리기 전에 이 실험을 끝내거나, 두 회사를 모두 적은 뒤에 돌리십시오.
+            <br />
+            실제 채점은 이 선택과 무관하게 Anthropic으로 나갑니다 — 여기서 고른 모델은 실험에만 씁니다.
+          </p>
+        )}
       </section>
 
       {done > 0 && (
@@ -309,10 +329,23 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             <Stat label="놓친 칸" value={String(sum.missedCells)} sub="기준은 읽었는데 못 읽은 것" />
             <Stat
               label="비용"
-              value={`$${sum.trialCost.toFixed(3)}`}
-              sub={`기준 $${sum.baseCost.toFixed(3)} · ${sum.baseCost ? pct(sum.trialCost, sum.baseCost) : "—"}`}
+              value={noPrice === pairs.length && pairs.length > 0 ? "—" : `$${sum.trialCost.toFixed(3)}`}
+              sub={
+                noPrice > 0
+                  ? `${noPrice}장은 단가 미상`
+                  : `기준 $${sum.baseCost.toFixed(3)} · ${sum.baseCost ? pct(sum.trialCost, sum.baseCost) : "—"}`
+              }
             />
           </dl>
+
+          {noPrice > 0 && (
+            <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+              <strong>{chosen?.label ?? model}의 단가를 모릅니다.</strong> 비용 칸을 0으로 채우면 이 화면이
+              &ldquo;이쪽이 공짜&rdquo;라고 말하게 되므로 <strong>비워 두었습니다.</strong> 현재 단가를 알려주시면
+              <code className="mx-1">lib/grading/provider.ts</code>의 <code>CATALOG</code>에 넣겠습니다 — 그 뒤로는
+              비용도 같이 비교됩니다. <strong>시간과 판정은 지금도 비교됩니다.</strong>
+            </p>
+          )}
           <p className="mt-2 text-xs text-slate-500">
             시간 {(sum.trialMs / 1000).toFixed(0)}초 (기준 {(sum.baseMs / 1000).toFixed(0)}초)
           </p>
@@ -419,7 +452,9 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                       </details>
                     )}
                   </td>
-                  <td className="p-2 text-xs text-slate-500">${d.costUsd.toFixed(3)}</td>
+                  <td className="p-2 text-xs text-slate-500">
+                    {latest.get(s.id)?.cost_usd === null ? "—" : `$${d.costUsd.toFixed(3)}`}
+                  </td>
                 </tr>
               ))}
             </tbody>
