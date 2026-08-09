@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ACADEMY, Crown, Wordmark } from "@/components/Logo";
+import { AcademyLine, Backdrop, BrandMark, ScanCard } from "@/components/Brand";
+import { Crown } from "@/components/Logo";
 import { browserClient } from "@/lib/db/client";
 import { me } from "@/lib/db/queries";
 import type { StaffRow } from "@/lib/db/schema";
@@ -64,59 +65,86 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
     setBusy(false);
   }
 
-  if (state === "loading") return <p className="p-6 text-sm text-slate-500">불러오는 중…</p>;
+  // 로그인 전 세 화면은 **같은 배경 위에** 올립니다. 확인 중에만 흰 화면이
+  // 번쩍이면 앱이 두 개인 것처럼 보입니다.
+  if (state === "loading") {
+    return (
+      <Backdrop>
+        <BrandMark />
+        <p className="mt-6 text-sm text-cyan-100/80">불러오는 중…</p>
+      </Backdrop>
+    );
+  }
 
   if (state === "notstaff") {
     return (
-      <main className="mx-auto max-w-sm p-6">
-        <Wordmark className="mx-auto mb-6 h-20 w-auto" />
-        <p className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          로그인은 됐지만 <strong>직원 명부에 없습니다.</strong> 원장님께 등록을 요청하십시오.
-        </p>
-        <button onClick={() => void db?.auth.signOut()} className="mt-3 text-sm text-slate-500 underline">
-          로그아웃
-        </button>
-      </main>
+      <Backdrop>
+        <BrandMark />
+        <div className="mt-8 w-full max-w-sm">
+          <ScanCard>
+            <p className="text-sm text-white">
+              로그인은 됐지만 <strong>직원 명부에 없습니다.</strong>
+              <br />
+              <span className="text-cyan-100/80">원장님께 등록을 요청하십시오.</span>
+            </p>
+            <button
+              onClick={() => void db?.auth.signOut()}
+              className="mt-4 w-full rounded-xl border border-white/30 px-4 py-2.5 text-sm font-medium text-white"
+            >
+              로그아웃
+            </button>
+          </ScanCard>
+        </div>
+        <div className="mt-10">
+          <AcademyLine />
+        </div>
+      </Backdrop>
     );
   }
 
   if (state === "out") {
+    const field =
+      "block w-full rounded-xl border border-white/25 bg-white/15 px-3.5 py-2.5 text-sm text-white " +
+      "placeholder:text-white/60 focus:border-cyan-200/70 focus:bg-white/20 focus:outline-none";
     return (
-      <main className="mx-auto max-w-sm p-6 pt-12">
-        <Wordmark className="mx-auto h-28 w-auto" />
-        <div className="mt-5 text-center">
-          <h1 className="text-2xl font-bold tracking-tight">GradeSnap</h1>
-          <p className="mt-1 text-sm text-slate-600">찍으면 채점되는 AI 답안 채점</p>
+      <Backdrop>
+        <BrandMark />
+        <div className="mt-8 flex w-full max-w-sm justify-center">
+          <ScanCard>
+            <form onSubmit={signIn} className="space-y-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="이메일"
+                autoComplete="username"
+                className={field}
+              />
+              <input
+                type="password"
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                placeholder="비밀번호"
+                autoComplete="current-password"
+                className={field}
+              />
+              {err && (
+                <p className="rounded-xl border border-rose-200/50 bg-rose-500/25 p-2.5 text-sm text-white">{err}</p>
+              )}
+              <button
+                type="submit"
+                disabled={busy || !email || !pw}
+                className="w-full rounded-xl bg-gradient-to-r from-cyan-300 to-teal-300 px-4 py-2.5 font-bold text-[#0B3A8F] shadow-lg shadow-cyan-500/20 transition disabled:opacity-40"
+              >
+                {busy ? "확인 중…" : "로그인"}
+              </button>
+            </form>
+          </ScanCard>
         </div>
-        <p className="mt-6 text-center text-sm text-slate-600">학원 계정으로 로그인하십시오.</p>
-        <form onSubmit={signIn} className="mt-4 space-y-3">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="이메일"
-            autoComplete="username"
-            className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="password"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            placeholder="비밀번호"
-            autoComplete="current-password"
-            className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          {err && <p className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800">{err}</p>}
-          <button
-            type="submit"
-            disabled={busy || !email || !pw}
-            className="w-full rounded-lg bg-slate-900 px-4 py-2.5 font-medium text-white disabled:opacity-40"
-          >
-            {busy ? "확인 중…" : "로그인"}
-          </button>
-        </form>
-        <p className="mt-8 text-center text-xs text-slate-400">{ACADEMY} 전용 · 직원만 이용할 수 있습니다</p>
-      </main>
+        <div className="mt-10">
+          <AcademyLine />
+        </div>
+      </Backdrop>
     );
   }
 

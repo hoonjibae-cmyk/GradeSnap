@@ -43,5 +43,17 @@ writeFileSync(
 );
 writeFileSync("public/logo.svg", src);
 
-console.log(`public/crown.svg  viewBox="${viewBox}"`);
-console.log("public/logo.svg   원본 그대로");
+/*
+  흰 왕관. 로그인 화면 배경이 파랑이라 원본 그라데이션(남색)은 묻힙니다.
+  CSS 필터로 흰색을 만드는 방법도 있지만, 필터는 브라우저마다 결과가 달라
+  **파일을 하나 더 뽑는 편이 확실합니다.** 그라데이션은 안 쓰므로 defs도 뺍니다.
+*/
+writeFileSync(
+  "public/crown-white.svg",
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" role="img" aria-label="목동유쌤영어">` +
+    `${paths[0].replace(/fill="[^"]*"/, 'fill="#FFFFFF"')}</svg>\n`,
+);
+
+console.log(`public/crown.svg        viewBox="${viewBox}"`);
+console.log(`public/crown-white.svg  같은 모양, 흰색`);
+console.log("public/logo.svg         원본 그대로");
