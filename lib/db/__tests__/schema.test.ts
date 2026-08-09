@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compare } from "@/lib/grading/compare";
 import type { Item, JudgeResult } from "@/lib/grading/types";
-import { needsReview, toItemRows, toJudgeResults } from "../schema";
+import { keepName, needsReview, toItemRows, toJudgeResults } from "../schema";
 import type { ItemRow, SheetRow } from "../schema";
 
 const item = (no: string, written = "뜻"): Item => ({
@@ -104,6 +104,30 @@ describe("저장된 문항으로 커트라인만 다시 세기", () => {
     expect(c.oursWrong).toHaveLength(6);
     expect(c.margin).toBe(-1);
     expect(c.ourVerdict).toBe("pass");
+  });
+});
+
+describe("학생 이름을 무엇으로 둘 것인가", () => {
+  it("적어둔 이름이 없으면 시험지에서 읽은 이름을 쓴다", () => {
+    expect(keepName("", "김철수")).toBe("김철수");
+    expect(keepName(null, "김철수")).toBe("김철수");
+  });
+
+  it("사람이 적어둔 이름을 시험지 이름으로 덮지 않는다", () => {
+    // 조교가 접수할 때 적었거나, 검수에서 오독을 고친 이름입니다.
+    expect(keepName("박준희", "박준회")).toBe("박준희");
+  });
+
+  it("다시 채점해도 고친 이름이 살아남는다", () => {
+    // 이걸 안 지키면 '다시' 한 번에 원래 오독으로 되돌아가고,
+    // 고친 사람은 그 사실을 모릅니다.
+    expect(keepName("신균수", "신균수")).toBe("신균수");
+    expect(keepName("  신균수  ", "신교수")).toBe("신균수");
+  });
+
+  it("양쪽 다 비면 빈 값이다 — 지어내지 않는다", () => {
+    expect(keepName("", "")).toBe("");
+    expect(keepName(null, null)).toBe("");
   });
 });
 

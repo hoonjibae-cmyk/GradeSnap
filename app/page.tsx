@@ -168,6 +168,8 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: SheetRow) => void }) {
   const [imgs, setImgs] = useState<PreparedImage[]>([]);
   const [className, setClassName] = useState("");
+  // **다음 학생에게 안 남깁니다.** 남으면 앞 학생 이름을 달고 채점됩니다.
+  const [studentName, setStudentName] = useState("");
   const [strict, setStrict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -206,8 +208,9 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
     setBusy(true);
     setErr(null);
     try {
-      const sheet = await intake(db, imgs, { className, cutLine: "", strictSpelling: strict });
+      const sheet = await intake(db, imgs, { className, studentName, cutLine: "", strictSpelling: strict });
       setImgs([]); // 다음 학생을 바로 받을 수 있게 비웁니다.
+      setStudentName(""); // 반은 남기고 **이름만 지웁니다.**
       onReceived(sheet);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -220,7 +223,7 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-slate-700">반</span>
+          <span className="shrink-0 text-slate-700">반</span>
           <input
             value={className}
             onChange={(e) => setClassName(e.target.value)}
@@ -232,8 +235,25 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
           <input type="checkbox" checked={strict} onChange={(e) => setStrict(e.target.checked)} />
           <span>철자 엄격</span>
         </label>
-        <span className="text-xs text-slate-500">한 번 정해두면 다음 학생에도 그대로 붙습니다.</span>
+        <span className="text-xs text-slate-500">반과 철자는 다음 학생에도 그대로 붙습니다.</span>
       </div>
+
+      {/*
+        학생 이름은 **접수할 때마다 비웁니다.** 반과 달리 남겨두면 다음 답안지가
+        앞 학생 이름을 달고 채점되고, 그건 화면 어디에도 티가 안 납니다.
+        그래서 반과 한 줄에 두지 않고 답안지 칸 바로 위에 따로 뒀습니다.
+      */}
+      <label className="mb-3 block border-t border-slate-100 pt-3">
+        <span className="mb-1 block text-sm font-medium">
+          학생 이름 <span className="font-normal text-slate-500">— 안 적으면 시험지에서 읽습니다</span>
+        </span>
+        <input
+          value={studentName}
+          onChange={(e) => setStudentName(e.target.value)}
+          placeholder="이름을 알고 있으면 적어두십시오"
+          className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+      </label>
 
       <label className="block">
         <span className="mb-1 block text-sm font-medium">이 학생의 답안지</span>
@@ -300,7 +320,11 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
         disabled={!imgs.length || busy}
         className="mt-4 w-full rounded-lg bg-slate-900 px-5 py-3 font-medium text-white disabled:opacity-40"
       >
-        {busy ? "접수 중…" : imgs.length ? `접수하고 채점 시작 (${imgs.length}쪽)` : "사진을 찍어 주십시오"}
+        {busy
+          ? "접수 중…"
+          : imgs.length
+            ? `${studentName.trim() || "이 학생"} 접수하고 채점 시작 (${imgs.length}쪽)`
+            : "사진을 찍어 주십시오"}
       </button>
       <p className="mt-2 text-center text-xs text-slate-500">
         접수하면 바로 뒤에서 채점됩니다. <strong>기다리지 말고 다음 학생을 받으십시오.</strong>

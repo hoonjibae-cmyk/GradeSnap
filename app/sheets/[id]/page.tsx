@@ -3,7 +3,15 @@
 import { use, useCallback, useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, Gate } from "@/components/Gate";
-import { confirmSheet, getSheet, itemsOf, pageUrls, setTeacherVerdict, unconfirmSheet } from "@/lib/db/queries";
+import {
+  confirmSheet,
+  getSheet,
+  itemsOf,
+  pageUrls,
+  setTeacherVerdict,
+  unconfirmSheet,
+  updateSheetInfo,
+} from "@/lib/db/queries";
 import type { ItemRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import type { Verdict } from "@/lib/grading/types";
 
@@ -17,6 +25,110 @@ import type { Verdict } from "@/lib/grading/types";
 export default function SheetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return <Gate>{(db, staff) => <Review db={db} staff={staff} id={id} />}</Gate>;
+}
+
+/**
+ * 이름과 반 — 보기와 고치기.
+ *
+ * 시험지 머리말이 흐리거나 학생이 이름을 흘려 쓰면 잘못 읽힙니다.
+ * **그건 채점을 다시 돌릴 일이 아니라 글자만 고치면 되는 일**입니다.
+ * 확정한 뒤에도 고칠 수 있게 뒀습니다 — 오타 정정을 막을 이유가 없고,
+ * 막으면 명단에 틀린 이름이 그대로 나갑니다.
+ */
+function Identity({
+  sheet,
+  db,
+  onSaved,
+  onError,
+}: {
+  sheet: SheetRow;
+  db: SupabaseClient;
+  onSaved: () => Promise<void>;
+  onError: (m: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(sheet.student_name);
+  const [cls, setCls] = useState(sheet.class_name);
+  const [busy, setBusy] = useState(false);
+
+  // 시험지에서 읽은 이름. 사람이 적은 것과 다르면 짚어줍니다 —
+  // **사진이 다른 학생 것일 수도 있습니다.**
+  const read = (sheet.transcript?.sheet.student ?? "").trim();
+  const differs = read && read !== sheet.student_name.trim();
+
+  async function save() {
+    setBusy(true);
+    try {
+      await updateSheetInfo(db, sheet.id, { student_name: name, class_name: cls });
+      await onSaved();
+      setEditing(false);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-slate-500">
+          학생 이름
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            className="mt-0.5 block w-44 rounded-lg border border-slate-300 px-2 py-1.5 text-base text-slate-900"
+          />
+        </label>
+        <label className="text-xs text-slate-500">
+          반
+          <input
+            value={cls}
+            onChange={(e) => setCls(e.target.value)}
+            placeholder="비워도 됩니다"
+            className="mt-0.5 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-base text-slate-900"
+          />
+        </label>
+        <button
+          onClick={() => void save()}
+          disabled={busy}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          {busy ? "…" : "저장"}
+        </button>
+        <button
+          onClick={() => {
+            setName(sheet.student_name);
+            setCls(sheet.class_name);
+            setEditing(false);
+          }}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          취소
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-xl font-bold">
+          {sheet.student_name || <span className="text-slate-400">이름 못 읽음</span>}
+        </h1>
+        {sheet.class_name && <span className="text-sm text-slate-500">{sheet.class_name}</span>}
+        <button onClick={() => setEditing(true)} className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
+          이름·반 고치기
+        </button>
+      </div>
+      {differs && (
+        <p className="mt-1 text-xs text-amber-700">
+          시험지에서 읽은 이름은 <strong>{read}</strong>입니다. 사진이 다른 학생 것은 아닌지 확인하십시오.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: string }) {
@@ -119,9 +231,9 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
       )}
 
       <header className="mb-4">
-        <h1 className="text-xl font-bold">{sheet.student_name || "이름 못 읽음"}</h1>
+        <Identity sheet={sheet} db={db} onSaved={load} onError={setErr} />
         <p className="mt-1 text-sm text-slate-600">
-          {[sheet.title, sheet.class_name, new Date(sheet.created_at).toLocaleString("ko-KR")].filter(Boolean).join(" · ")}
+          {[sheet.title, new Date(sheet.created_at).toLocaleString("ko-KR")].filter(Boolean).join(" · ")}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {v && (

@@ -188,6 +188,25 @@ export interface WrongItemRow {
   overturned: boolean;
 }
 
+/**
+ * 채점 결과를 저장할 때 학생 이름을 무엇으로 둘 것인가.
+ *
+ * **사람이 적어둔 이름을 시험지에서 읽은 이름으로 덮지 않습니다.**
+ * 두 경우에 다릅니다.
+ *
+ * | 상황 | 결과 |
+ * |---|---|
+ * | 조교가 접수할 때 이름을 적음 | 그 이름을 씁니다 |
+ * | 안 적었으면 | 시험지 머리말에서 읽은 이름 |
+ * | 검수에서 고친 뒤 다시 채점 | **고친 이름이 살아남습니다** |
+ *
+ * 마지막 줄이 이 함수가 있는 이유입니다. 이름을 고쳐놨는데 재시도 한 번에
+ * 원래 오독으로 되돌아가면 고친 사람은 그걸 모릅니다.
+ */
+export function keepName(existing: string | null | undefined, transcribed: string | null | undefined): string {
+  return (existing ?? "").trim() || (transcribed ?? "").trim();
+}
+
 /** 사람이 반드시 봐야 하는 답안지. 목록에서 이걸로 셉니다. */
 export function needsReview(s: SheetRow): boolean {
   if (s.status !== "graded") return false;

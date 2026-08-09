@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
 import {
+  keepName,
   toItemRows,
   type ItemRow,
   type ModelTrialRow,
@@ -117,6 +118,13 @@ export const BUCKET = "sheets";
 export interface Intake {
   /** 반. 안 골라도 됩니다. 고르면 조교 화면에 남아 다음 학생에도 그대로 붙습니다. */
   className: string;
+  /**
+   * 학생 이름. 안 적으면 시험지 머리말에서 읽습니다.
+   *
+   * **반과 달리 다음 학생에게 남기면 안 됩니다.** 남으면 다음 답안지가
+   * 앞 학생 이름을 달고 채점되고, 그건 조용히 틀립니다.
+   */
+  studentName: string;
   /** 머리말이 가려 커트라인이 안 읽힐 때만. 보통 비웁니다. */
   cutLine: string;
   strictSpelling: boolean;
@@ -142,6 +150,7 @@ export async function intake(db: SupabaseClient, images: PreparedImage[], opts: 
       .from("sheets")
       .insert({
         class_name: opts.className.trim(),
+        student_name: opts.studentName.trim(),
         cut_line: opts.cutLine.trim() || null,
         strict_spelling: opts.strictSpelling,
         received_by: u.user?.id ?? null,
@@ -272,6 +281,27 @@ export async function unconfirmSheet(db: SupabaseClient, sheetId: string): Promi
     .update({ status: "graded", final_verdict: null, confirmed_by: null, confirmed_at: null })
     .eq("id", sheetId);
   if (res.error) throw new Error(`확정 취소: ${res.error.message}`);
+}
+
+/**
+ * 이름과 반을 고칩니다.
+ *
+ * 시험지 머리말이 흐리거나 학생이 이름을 흘려 써 잘못 읽히는 일이 있습니다.
+ * **채점을 다시 돌릴 일이 아니라 글자만 고치면 되는 일**이라 따로 뒀습니다.
+ */
+export async function updateSheetInfo(
+  db: SupabaseClient,
+  sheetId: string,
+  patch: { student_name?: string; class_name?: string },
+): Promise<void> {
+  const res = await db
+    .from("sheets")
+    .update({
+      ...(patch.student_name !== undefined ? { student_name: patch.student_name.trim() } : {}),
+      ...(patch.class_name !== undefined ? { class_name: patch.class_name.trim() } : {}),
+    })
+    .eq("id", sheetId);
+  if (res.error) throw new Error(`이름 고치기: ${res.error.message}`);
 }
 
 /** 올리다 만 것, 실패한 것을 지웁니다. 사진 행은 FK로 같이 사라집니다. */
@@ -452,6 +482,10 @@ export interface Grading {
  * 같은 문항이 두 벌 쌓이고, 그러면 오답 개수가 두 배가 됩니다.
  */
 export async function saveGrading(db: SupabaseClient, sheetId: string, g: Grading): Promise<void> {
+  // 지금 적혀 있는 이름을 먼저 봅니다 — 접수할 때 적었거나 검수에서 고친 것일 수 있습니다.
+  const cur = await db.from("sheets").select("student_name").eq("id", sheetId).maybeSingle();
+  const current = cur.data as { student_name: string } | null;
+
   const del = await db.from("items").delete().eq("sheet_id", sheetId);
   if (del.error) throw new Error(`이전 채점 지우기: ${del.error.message}`);
 
@@ -466,7 +500,8 @@ export async function saveGrading(db: SupabaseClient, sheetId: string, g: Gradin
     .update({
       status: "graded",
       error: null,
-      student_name: g.transcript.sheet.student ?? "",
+      // 사람이 적어둔 이름을 시험지에서 읽은 이름으로 덮지 않습니다.
+      student_name: keepName(current?.student_name, g.transcript.sheet.student),
       title: g.transcript.sheet.title ?? "",
       transcript: g.transcript,
       warnings: g.warnings,
