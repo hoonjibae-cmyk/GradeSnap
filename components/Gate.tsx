@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AcademyLine, Backdrop, BrandMark, ScanCard } from "@/components/Brand";
 import { Crown } from "@/components/Logo";
@@ -151,26 +152,97 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
   return <>{children(db!, staff!)}</>;
 }
 
-/** 화면 위쪽에 늘 붙는 줄. 누구로 들어와 있는지가 보여야 합니다. */
-export function Bar({ db, staff, children }: { db: SupabaseClient; staff: StaffRow; children?: React.ReactNode }) {
-  const label = { assistant: "조교", teacher: "선생님", admin: "관리자" }[staff.role];
+const ROLE_LABEL: Record<StaffRow["role"], string> = { assistant: "조교", teacher: "선생님", admin: "관리자" };
+
+/**
+ * 화면 위쪽에 늘 붙는 줄.
+ *
+ * **메뉴를 화면마다 넘기지 않고 여기서 만듭니다.** 예전에는 각 화면이 링크를
+ * 넘겨줬는데, 그래서 화면마다 메뉴가 달랐고 휴대폰에서는 줄이 넘쳐
+ * '명 단' '관 리' 처럼 글자가 쪼개졌습니다.
+ *
+ * 휴대폰에서는 이름을 누르면 메뉴가 열리고, 넓은 화면에서는 그대로 펼칩니다.
+ * 조교는 대부분 접수 화면에만 있으므로 메뉴를 접어두는 손해가 거의 없습니다.
+ */
+export function Bar({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
+  const path = usePathname();
+  const [open, setOpen] = useState(false);
+
+  const links = [
+    { href: "/", label: "접수" },
+    { href: "/roster", label: "명단" },
+    { href: "/quick", label: "빠른 시험" },
+    ...(staff.role === "admin"
+      ? [
+          { href: "/bench", label: "모델 비교" },
+          { href: "/admin", label: "관리" },
+        ]
+      : []),
+  ];
+  // 답안지 상세(/sheets/…)에서는 접수를 현재 위치로 봅니다 — 거기서 넘어온 화면입니다.
+  const here = (href: string) => (href === "/" ? path === "/" || path.startsWith("/sheets") : path.startsWith(href));
+
   return (
-    <div className="mb-5 flex items-center justify-between border-b border-slate-200 pb-3 text-sm">
-      <div className="flex items-center gap-3">
-        <a href="/" className="inline-flex items-center gap-1.5 font-bold">
+    <header className="mb-5 border-b border-slate-200 pb-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <a href="/" className="inline-flex shrink-0 items-center gap-1.5 font-bold">
           <Crown className="h-5 w-auto" />
           GradeSnap
         </a>
-        {children}
-      </div>
-      <div className="flex items-center gap-3 text-slate-500">
-        <span>
-          {staff.name || "이름 없음"} · {label}
-        </span>
-        <button onClick={() => void db.auth.signOut()} className="underline">
-          로그아웃
+
+        {/* 넓은 화면 — 그대로 펼칩니다 */}
+        <nav className="hidden flex-1 items-center gap-4 sm:flex">
+          {links.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className={here(l.href) ? "font-medium text-slate-900" : "text-slate-500 hover:text-slate-700"}
+            >
+              {l.label}
+            </a>
+          ))}
+        </nav>
+        <div className="hidden items-center gap-3 text-slate-500 sm:flex">
+          <span className="whitespace-nowrap">
+            {staff.name || "이름 없음"} · {ROLE_LABEL[staff.role]}
+          </span>
+          <button onClick={() => void db.auth.signOut()} className="underline">
+            로그아웃
+          </button>
+        </div>
+
+        {/* 휴대폰 — 이름을 눌러 엽니다. 누구로 들어와 있는지는 접지 않고 늘 보입니다. */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex max-w-[60%] items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-slate-600 sm:hidden"
+        >
+          <span className="truncate">{staff.name || "이름 없음"}</span>
+          <span className="text-xs text-slate-400">{open ? "▲" : "▼"}</span>
         </button>
       </div>
-    </div>
+
+      {open && (
+        <nav className="mt-3 grid grid-cols-2 gap-2 sm:hidden">
+          {links.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className={`rounded-lg border px-3 py-2 text-center ${
+                here(l.href) ? "border-slate-900 bg-slate-900 font-medium text-white" : "border-slate-300 text-slate-700"
+              }`}
+            >
+              {l.label}
+            </a>
+          ))}
+          <button
+            onClick={() => void db.auth.signOut()}
+            className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-slate-500"
+          >
+            로그아웃 ({ROLE_LABEL[staff.role]})
+          </button>
+        </nav>
+      )}
+    </header>
   );
 }

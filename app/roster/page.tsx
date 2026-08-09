@@ -58,11 +58,7 @@ function Roster({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   return (
     <main className="mx-auto max-w-3xl p-5 pb-24">
       <div className="no-print">
-        <Bar db={db} staff={staff}>
-          <a href="/" className="text-slate-500 underline">
-            접수
-          </a>
-        </Bar>
+        <Bar db={db} staff={staff} />
       </div>
 
       {err && (

@@ -111,24 +111,7 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 
   return (
     <main className="mx-auto max-w-3xl p-5 pb-24">
-      <Bar db={db} staff={staff}>
-        <a href="/roster" className="font-medium text-slate-700 underline">
-          명단
-        </a>
-        <a href="/quick" className="text-slate-500 underline">
-          빠른 시험
-        </a>
-        {staff.role === "admin" && (
-          <>
-            <a href="/bench" className="text-slate-500 underline">
-              모델 비교
-            </a>
-            <a href="/admin" className="text-slate-500 underline">
-              관리
-            </a>
-          </>
-        )}
-      </Bar>
+      <Bar db={db} staff={staff} />
 
       {err && (
         <p className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">

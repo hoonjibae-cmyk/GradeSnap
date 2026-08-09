@@ -107,11 +107,7 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-24">
-      <Bar db={db} staff={staff}>
-        <a href="/" className="text-slate-500 underline">
-          접수 목록
-        </a>
-      </Bar>
+      <Bar db={db} staff={staff} />
 
       {err && (
         <p className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">

@@ -46,11 +46,7 @@ function Admin({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-24">
-      <Bar db={db} staff={staff}>
-        <a href="/" className="text-slate-500 underline">
-          접수
-        </a>
-      </Bar>
+      <Bar db={db} staff={staff} />
       <h1 className="mb-4 text-xl font-bold">관리</h1>
       {err && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{err}</p>}
       <Usage db={db} onError={setErr} />

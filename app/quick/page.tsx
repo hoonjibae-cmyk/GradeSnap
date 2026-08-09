@@ -79,11 +79,7 @@ function Quick({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-24">
-      <Bar db={db} staff={staff}>
-        <a href="/" className="text-slate-500 underline">
-          접수
-        </a>
-      </Bar>
+      <Bar db={db} staff={staff} />
       <header className="mb-6">
         <h1 className="text-2xl font-bold">빠른 시험</h1>
         <p className="mt-1 text-sm text-slate-600">
