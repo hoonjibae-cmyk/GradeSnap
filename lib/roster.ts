@@ -1,3 +1,4 @@
+import { ACADEMY } from "@/lib/brand";
 import type { SheetRow, WrongItemRow } from "@/lib/db/schema";
 
 /**
@@ -48,7 +49,9 @@ const name = (s: SheetRow) => s.student_name.trim() || "(이름 못 읽음)";
 
 /** 칠판에 적거나 메신저에 붙일 재시험 명단. */
 export function retestText(day: string, retest: SheetRow[], pending: number): string {
-  const lines = [`${day} 재시험 명단 (${retest.length}명)`];
+  // 학원 이름을 글에 넣습니다. 메신저에 붙은 명단만 보는 사람은
+  // 화면도 인쇄물도 안 봤고, **어디서 온 명단인지 알 길이 없습니다.**
+  const lines = [`[${ACADEMY}] ${day} 재시험 명단 (${retest.length}명)`];
   for (const [cls, rows] of byClass(retest)) {
     lines.push("", cls, rows.map(name).join(", "));
   }
@@ -63,7 +66,7 @@ export function wrongText(day: string, items: WrongItemRow[]): string {
   const bySheet = new Map<string, WrongItemRow[]>();
   for (const it of items) (bySheet.get(it.sheet_id) ?? bySheet.set(it.sheet_id, []).get(it.sheet_id)!).push(it);
 
-  const lines = [`${day} 오답 목록`];
+  const lines = [`[${ACADEMY}] ${day} 오답 목록`];
   for (const rows of bySheet.values()) {
     const h = rows[0];
     lines.push("", `${h.student_name || "(이름 못 읽음)"}${h.title ? ` — ${h.title}` : ""} (${rows.length}개)`);

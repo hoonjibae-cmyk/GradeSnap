@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 78" width="400" height="312">
+  <!--
+    목동유쌤영어 왕관 마크.
+
+    원장님이 주신 로고를 벡터로 다시 그린 것입니다. 채팅에 붙인 이미지는
+    파일로 꺼낼 수가 없어서, 같은 구성(세 갈래 첨탑 · 끝의 구슬 ·
+    가운데 추 · 좌우 원 · 넓은 밑동 · 파랑 그라데이션)을 옮겼습니다.
+    원본 파일을 저장소에 넣어주시면 그걸로 바꿉니다.
+  -->
+  <defs>
+    <linearGradient id="crown" x1="0" y1="0" x2="1" y2="0.6">
+      <stop offset="0" stop-color="#2E6FB7" />
+      <stop offset="0.5" stop-color="#2A55A0" />
+      <stop offset="1" stop-color="#25356E" />
+    </linearGradient>
+  </defs>
+
+  <g fill="url(#crown)">
+    <!-- 몸통: 첨탑 셋과 넓은 밑동 -->
+    <path d="M7 66
+             C7 42 9 21 14 8
+             C19 23 26 37 33 47
+             C39 35 45 20 50 7
+             C55 20 61 35 67 47
+             C74 37 81 23 86 8
+             C91 21 93 42 93 66
+             C77 73 23 73 7 66 Z" />
+    <!-- 첨탑 끝 구슬 -->
+    <circle cx="14" cy="5" r="2.6" />
+    <circle cx="50" cy="4" r="2.6" />
+    <circle cx="86" cy="5" r="2.6" />
+  </g>
+
+  <!-- 가운데 추 — 이 로고에서 가장 눈에 띄는 요소라 굵기를 지킵니다 -->
+  <path d="M50 9 V44" stroke="#FFFFFF" stroke-width="2.4" fill="none" />
+  <circle cx="50" cy="49" r="6.4" fill="#FFFFFF" />
+
+  <!-- 좌우 원 -->
+  <circle cx="26" cy="53" r="5.2" fill="#FFFFFF" />
+  <circle cx="74" cy="53" r="5.2" fill="#FFFFFF" />
+</svg>

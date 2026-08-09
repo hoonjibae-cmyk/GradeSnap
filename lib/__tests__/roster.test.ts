@@ -71,7 +71,7 @@ describe("반별로 묶기", () => {
 describe("붙여넣을 글로 만들기", () => {
   it("반별로 이름을 나열한다", () => {
     const t = retestText("2026-08-08", [sheet({ student_name: "가", class_name: "중3 A" })], 0);
-    expect(t).toContain("2026-08-08 재시험 명단 (1명)");
+    expect(t).toContain("[목동유쌤영어] 2026-08-08 재시험 명단 (1명)");
     expect(t).toContain("중3 A");
     expect(t).toContain("가");
   });
@@ -84,6 +84,11 @@ describe("붙여넣을 글로 만들기", () => {
 
   it("대상이 없으면 '없음'이라고 쓴다 — 빈 글을 붙여넣게 두지 않는다", () => {
     expect(retestText("2026-08-08", [], 0)).toContain("없음");
+  });
+
+  it("어디서 온 명단인지 글 안에 적는다 — 붙여넣으면 화면은 안 따라간다", () => {
+    expect(retestText("2026-08-08", [], 0)).toContain("[목동유쌤영어]");
+    expect(wrongText("2026-08-08", [])).toContain("[목동유쌤영어]");
   });
 
   it("오답을 학생별로 묶고 무응답도 적는다", () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ACADEMY, Crown, Wordmark } from "@/components/Logo";
 import { browserClient } from "@/lib/db/client";
 import { me } from "@/lib/db/queries";
 import type { StaffRow } from "@/lib/db/schema";
@@ -68,6 +69,7 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
   if (state === "notstaff") {
     return (
       <main className="mx-auto max-w-sm p-6">
+        <Wordmark stacked className="mb-6" />
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           로그인은 됐지만 <strong>직원 명부에 없습니다.</strong> 원장님께 등록을 요청하십시오.
         </p>
@@ -80,9 +82,13 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
 
   if (state === "out") {
     return (
-      <main className="mx-auto max-w-sm p-6">
-        <h1 className="text-xl font-bold">GradeSnap</h1>
-        <p className="mt-1 text-sm text-slate-600">학원 계정으로 로그인하십시오.</p>
+      <main className="mx-auto max-w-sm p-6 pt-12">
+        <Wordmark stacked />
+        <div className="mt-5 text-center">
+          <h1 className="text-2xl font-bold tracking-tight">GradeSnap</h1>
+          <p className="mt-1 text-sm text-slate-600">찍으면 채점되는 AI 답안 채점</p>
+        </div>
+        <p className="mt-6 text-center text-sm text-slate-600">학원 계정으로 로그인하십시오.</p>
         <form onSubmit={signIn} className="mt-4 space-y-3">
           <input
             type="email"
@@ -109,6 +115,7 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
             {busy ? "확인 중…" : "로그인"}
           </button>
         </form>
+        <p className="mt-8 text-center text-xs text-slate-400">{ACADEMY} 전용 · 직원만 이용할 수 있습니다</p>
       </main>
     );
   }
@@ -122,7 +129,8 @@ export function Bar({ db, staff, children }: { db: SupabaseClient; staff: StaffR
   return (
     <div className="mb-5 flex items-center justify-between border-b border-slate-200 pb-3 text-sm">
       <div className="flex items-center gap-3">
-        <a href="/" className="font-bold">
+        <a href="/" className="inline-flex items-center gap-1.5 font-bold">
+          <Crown className="h-5 w-auto" />
           GradeSnap
         </a>
         {children}

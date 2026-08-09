@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, Gate } from "@/components/Gate";
+import { ACADEMY, Crown } from "@/components/Logo";
 import { sheetsOn, wrongItemsOn } from "@/lib/db/queries";
 import type { SheetRow, StaffRow, WrongItemRow } from "@/lib/db/schema";
 import { byClass, retestText, splitRoster, wrongText } from "@/lib/roster";
@@ -68,6 +69,19 @@ function Roster({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
         <p className="no-print mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{err}</p>
       )}
 
+      {/*
+        이 화면은 종이로 나가 선생님·학생에게 갑니다. 화면에서는 상단 줄에
+        로고가 있지만 인쇄물에는 그게 안 따라가므로, **인쇄 전용 머리말**을
+        따로 둡니다. 학원 이름 없는 명단은 어디서 나온 종이인지 알 수 없습니다.
+      */}
+      <div className="mb-3 hidden items-center gap-2 border-b border-slate-300 pb-2 print:flex">
+        <Crown className="h-8 w-auto" mono="#25356E" />
+        <div>
+          <p className="text-base font-black tracking-tight text-[#25356E]">{ACADEMY}</p>
+          <p className="text-xs text-slate-600">{day} 시험 결과</p>
+        </div>
+      </div>
+
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <input
@@ -76,7 +90,6 @@ function Roster({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             onChange={(e) => setDay(e.target.value)}
             className="no-print rounded-lg border border-slate-300 px-2 py-1 text-sm"
           />
-          <h1 className="hidden text-lg font-bold print:block">{day} 결과</h1>
           <span className="text-sm text-slate-600">
             접수 {sheets.length} · 확정 {retest.length + passed.length}
           </span>
