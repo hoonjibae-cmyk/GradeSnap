@@ -30,13 +30,14 @@ export interface StaffRow {
   created_at: string;
 }
 
-/** 학원이 정하는 근무 시간. 무엇이 '근무 시간 외'인지의 기준입니다. */
+/**
+ * 학원이 정하는 근무 시간. 무엇이 '근무 시간 외'인지의 기준입니다.
+ *
+ * **요일마다 다릅니다.** 길이 7 배열이고 0=일 … 6=토, `null`이면 근무일이 아닙니다.
+ */
 export interface SettingsRow {
   id: boolean;
-  work_start: number;
-  work_end: number;
-  /** 0=일 … 6=토 */
-  work_days: number[];
+  work_hours: ({ start: number; end: number } | null)[];
   updated_at: string;
 }
 

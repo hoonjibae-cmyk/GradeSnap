@@ -65,13 +65,11 @@ export async function getSettings(db: SupabaseClient): Promise<SettingsRow> {
   return ok(await db.from("settings").select("*").eq("id", true).single(), "설정") as SettingsRow;
 }
 
-export async function saveSettings(
-  db: SupabaseClient,
-  patch: { work_start: number; work_end: number; work_days: number[] },
-): Promise<void> {
+export async function saveSettings(db: SupabaseClient, workHours: SettingsRow["work_hours"]): Promise<void> {
+  if (workHours.length !== 7) throw new Error("근무 시간은 요일 일곱 칸이라야 합니다.");
   const res = await db
     .from("settings")
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ work_hours: workHours, updated_at: new Date().toISOString() })
     .eq("id", true);
   if (res.error) throw new Error(`설정 저장: ${res.error.message}`);
 }

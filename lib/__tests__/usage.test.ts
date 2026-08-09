@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UsageEventRow } from "@/lib/db/schema";
-import { byHour, byStaff, DEFAULT_HOURS, isOffHours, kst, totals } from "../usage";
+import { byHour, byStaff, DEFAULT_HOURS, describeHours, isOffHours, kst, totals, type WorkHours } from "../usage";
 
 /** 2026-08-10은 월요일입니다. */
 const mon = (hhmmKst: string) => {
@@ -51,6 +51,15 @@ describe("근무 시간 밖인가", () => {
 
   it("새벽 두 시는 밖이다 — 이걸 잡으려고 만들었다", () => {
     expect(isOffHours(mon("02:00"), DEFAULT_HOURS)).toBe(true);
+  });
+
+  it("요일마다 근무 시간이 다르면 각자 자기 시간으로 본다", () => {
+    // 토요일만 오전 근무. 토 15시는 밖이고 월 15시는 안입니다.
+    const w: WorkHours = [null, { start: 13, end: 23 }, null, null, null, null, { start: 9, end: 13 }];
+    const sat15 = new Date(Date.UTC(2026, 7, 8, 6, 0)).toISOString(); // 토 15:00 KST
+    expect(kst(sat15).day).toBe(6);
+    expect(isOffHours(sat15, w)).toBe(true);
+    expect(isOffHours(mon("15:00"), w)).toBe(false);
   });
 
   it("근무일이 아니면 시각과 무관하게 밖이다", () => {
@@ -110,9 +119,39 @@ describe("사람별로 모으기", () => {
 
 describe("시간대별 분포", () => {
   it("한국 기준 시각에 담는다", () => {
-    const bins = byHour([ev({ created_at: mon("02:00") }), ev({ created_at: mon("02:30") })]);
-    expect(bins[2]).toBe(2);
+    const bins = byHour([ev({ created_at: mon("02:00") }), ev({ created_at: mon("02:30") })], DEFAULT_HOURS);
+    expect(bins[2].total).toBe(2);
     expect(bins).toHaveLength(24);
+  });
+
+  it("근무 시간 밖인지를 칸이 아니라 건별로 센다", () => {
+    /*
+      같은 15시라도 월요일은 근무이고 일요일은 아닙니다. 칸 단위로 색을 매기면
+      둘을 못 가릅니다 — 요일마다 근무 시간이 다르므로 "15시는 근무"라고
+      말할 수 없습니다.
+    */
+    const sun15 = new Date(Date.UTC(2026, 7, 9, 6, 0)).toISOString(); // 일 15:00 KST
+    const bins = byHour([ev({ created_at: mon("15:00") }), ev({ created_at: sun15 })], DEFAULT_HOURS);
+    expect(bins[15]).toEqual({ total: 2, off: 1 });
+  });
+});
+
+describe("근무 시간을 한 줄로 적기", () => {
+  const w = (...days: (readonly [number, number] | null)[]): WorkHours =>
+    days.map((d) => (d ? { start: d[0], end: d[1] } : null));
+
+  it("같은 시간대끼리 묶는다", () => {
+    // 일곱 줄로 늘어놓으면 아무도 안 읽습니다.
+    const s = describeHours(w(null, [17, 22], [17, 22], [17, 22], [17, 22], [17, 22], [10, 14]));
+    expect(s).toBe("월·화·수·목·금 17:00~22:00 · 토 10:00~14:00");
+  });
+
+  it("요일 순서를 지킨다", () => {
+    expect(describeHours(w([9, 12], [13, 23], null, null, null, null, null))).toBe("일 09:00~12:00 · 월 13:00~23:00");
+  });
+
+  it("근무일이 하나도 없으면 그렇게 말한다", () => {
+    expect(describeHours(w(null, null, null, null, null, null, null))).toBe("근무일이 없습니다");
   });
 });
 

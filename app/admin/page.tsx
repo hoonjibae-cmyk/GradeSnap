@@ -13,7 +13,7 @@ import {
   type RetentionStatus,
 } from "@/lib/db/queries";
 import type { Role, SettingsRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
-import { byHour, byStaff, isOffHours, totals, type WorkHours } from "@/lib/usage";
+import { byHour, byStaff, DAY_NAMES, describeHours, isOffHours, totals, type DayHours, type WorkHours } from "@/lib/usage";
 
 /**
  * 관리 화면 — 직원, 사용량, 사진 보관.
@@ -60,8 +60,6 @@ function Admin({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 // 사용량
 // ---------------------------------------------------------------------------
 
-const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
-
 function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => void }) {
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(daysAgo(0));
@@ -83,11 +81,11 @@ function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => vo
 
   if (!cfg) return <section className="mb-6 text-sm text-slate-500">불러오는 중…</section>;
 
-  const hours: WorkHours = { startHour: cfg.work_start, endHour: cfg.work_end, days: cfg.work_days };
+  const hours: WorkHours = cfg.work_hours;
   const rows = byStaff(events, hours);
   const sum = totals(rows);
-  const bins = byHour(events);
-  const peak = Math.max(1, ...bins);
+  const bins = byHour(events, hours);
+  const peak = Math.max(1, ...bins.map((b) => b.total));
   const nameOf = (id: string | null) => people.find((p) => p.id === id)?.name || (id ? "(지워진 직원)" : "(알 수 없음)");
 
   const off = events.filter((e) => isOffHours(e.created_at, hours)).slice(0, 20);
@@ -117,15 +115,7 @@ function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => vo
 
       {/* 근무 시간 — 무엇이 '밖'인지의 기준이라 화면에 늘 보여야 합니다. */}
       <div className="mt-3 rounded-lg bg-slate-100 p-2 text-xs text-slate-600">
-        기준 근무 시간:{" "}
-        <strong>
-          {cfg.work_days
-            .slice()
-            .sort()
-            .map((d) => DAY_NAMES[d])
-            .join("·")}{" "}
-          {String(cfg.work_start).padStart(2, "0")}:00 ~ {String(cfg.work_end).padStart(2, "0")}:00 (한국 시간)
-        </strong>
+        기준 근무 시간: <strong>{describeHours(hours)}</strong> <span className="text-slate-500">(한국 시간)</span>
         <button onClick={() => setEditing((v) => !v)} className="ml-2 underline">
           {editing ? "닫기" : "바꾸기"}
         </button>
@@ -183,19 +173,29 @@ function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => vo
           <div className="mt-5">
             <p className="mb-1 text-xs text-slate-500">시간대별 호출 (한국 시간)</p>
             <div className="flex items-end gap-[2px]">
-              {bins.map((n, h) => {
-                const outside = !hours.days.length || h < hours.startHour || h >= hours.endHour;
-                return (
-                  <div key={h} className="flex-1" title={`${h}시 · ${n}건`}>
-                    <div
-                      className={`w-full rounded-t ${n === 0 ? "bg-slate-100" : outside ? "bg-amber-400" : "bg-slate-700"}`}
-                      style={{ height: `${Math.max(2, (n / peak) * 56)}px` }}
-                    />
-                    {h % 6 === 0 && <p className="mt-0.5 text-[10px] text-slate-400">{h}</p>}
-                  </div>
-                );
-              })}
+              {bins.map((b, h) => (
+                <div
+                  key={h}
+                  className="flex-1"
+                  title={`${h}시 · ${b.total}건${b.off ? ` (근무 시간 외 ${b.off})` : ""}`}
+                >
+                  {/* 근무 시간 밖에서 일어난 몫을 막대 위쪽에 노랗게 얹습니다. */}
+                  <div
+                    className="w-full rounded-t bg-amber-400"
+                    style={{ height: `${(b.off / peak) * 56}px` }}
+                  />
+                  <div
+                    className={`w-full ${b.total === 0 ? "rounded-t bg-slate-100" : b.off === b.total ? "" : "rounded-t bg-slate-700"}`}
+                    style={{ height: `${Math.max(b.total === 0 ? 2 : 0, ((b.total - b.off) / peak) * 56)}px` }}
+                  />
+                  {h % 6 === 0 && <p className="mt-0.5 text-[10px] text-slate-400">{h}</p>}
+                </div>
+              ))}
             </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              <span className="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-400 align-middle" />
+              근무 시간 외
+            </p>
           </div>
 
           {off.length > 0 && (
@@ -219,6 +219,12 @@ function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => vo
   );
 }
 
+/**
+ * 요일마다 따로 정합니다.
+ *
+ * 학원은 토요일만 오전이거나 금요일만 늦게 끝나는 일이 흔합니다. 한 쌍으로
+ * 묶어두면 **'근무 시간 외' 숫자가 틀리고, 그 숫자로 직원을 봅니다.**
+ */
 function HoursForm({
   db,
   cfg,
@@ -230,16 +236,18 @@ function HoursForm({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const [start, setStart] = useState(cfg.work_start);
-  const [end, setEnd] = useState(cfg.work_end);
-  const [days, setDays] = useState<number[]>(cfg.work_days);
+  const [rows, setRows] = useState<WorkHours>(cfg.work_hours);
   const [busy, setBusy] = useState(false);
 
+  const set = (d: number, h: DayHours) => setRows((p) => p.map((x, i) => (i === d ? h : x)));
+  const firstOn = rows.find(Boolean) as NonNullable<DayHours> | undefined;
+
   async function save() {
-    if (start >= end) return onError("시작 시각이 끝 시각보다 빨라야 합니다.");
+    const bad = rows.findIndex((h) => h && h.start >= h.end);
+    if (bad >= 0) return onError(`${DAY_NAMES[bad]}요일: 시작 시각이 끝 시각보다 빨라야 합니다.`);
     setBusy(true);
     try {
-      await saveSettings(db, { work_start: start, work_end: end, work_days: [...days].sort() });
+      await saveSettings(db, rows);
       onSaved();
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -249,37 +257,66 @@ function HoursForm({
   }
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
-      {DAY_NAMES.map((d, i) => (
-        <button
-          key={i}
-          onClick={() => setDays((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]))}
-          className={`h-7 w-7 rounded border text-xs ${
-            days.includes(i) ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-500"
-          }`}
-        >
-          {d}
+    <div className="mt-2 border-t border-slate-200 pt-2">
+      <div className="space-y-1">
+        {DAY_NAMES.map((name, d) => {
+          const h = rows[d];
+          return (
+            <div key={d} className="flex items-center gap-2">
+              <button
+                onClick={() => set(d, h ? null : (firstOn ?? { start: 13, end: 23 }))}
+                className={`h-7 w-7 shrink-0 rounded border text-xs ${
+                  h ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-400"
+                }`}
+              >
+                {name}
+              </button>
+              {h ? (
+                <>
+                  <Hour value={h.start} onChange={(v) => set(d, { ...h, start: v })} />
+                  <span className="text-slate-400">~</span>
+                  <Hour value={h.end} onChange={(v) => set(d, { ...h, end: v })} to />
+                </>
+              ) : (
+                <span className="text-slate-400">근무일 아님</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button onClick={() => void save()} disabled={busy} className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40">
+          {busy ? "…" : "저장"}
         </button>
-      ))}
-      <select value={start} onChange={(e) => setStart(Number(e.target.value))} className="rounded border border-slate-300 px-1 py-0.5">
-        {Array.from({ length: 24 }, (_, h) => (
-          <option key={h} value={h}>
-            {String(h).padStart(2, "0")}:00
-          </option>
-        ))}
-      </select>
-      <span>~</span>
-      <select value={end} onChange={(e) => setEnd(Number(e.target.value))} className="rounded border border-slate-300 px-1 py-0.5">
-        {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
-          <option key={h} value={h}>
-            {String(h).padStart(2, "0")}:00
-          </option>
-        ))}
-      </select>
-      <button onClick={() => void save()} disabled={busy} className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40">
-        저장
-      </button>
+        {/* 대부분 같은 시간이고 하루 이틀만 다른 경우가 많습니다. 그 하루를 위해 일곱 번 고르게 두지 않습니다. */}
+        {firstOn && (
+          <button
+            onClick={() => setRows((p) => p.map((x) => (x ? { ...firstOn } : null)))}
+            className="rounded border border-slate-300 px-2 py-1 text-slate-600"
+          >
+            근무일 모두 {String(firstOn.start).padStart(2, "0")}:00~{String(firstOn.end).padStart(2, "0")}:00 로
+          </button>
+        )}
+      </div>
     </div>
+  );
+}
+
+function Hour({ value, onChange, to }: { value: number; onChange: (v: number) => void; to?: boolean }) {
+  const opts = to ? Array.from({ length: 24 }, (_, i) => i + 1) : Array.from({ length: 24 }, (_, i) => i);
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="rounded border border-slate-300 px-1 py-0.5"
+    >
+      {opts.map((h) => (
+        <option key={h} value={h}>
+          {String(h).padStart(2, "0")}:00
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -14,6 +14,7 @@ migrations/20260808000400_fix_staff_recursion.sql  -- 직원 정책 무한 재�
 migrations/20260808000500_unconfirm.sql         -- 확정 취소 시 기록도 지움
 migrations/20260808000600_model_trials.sql      -- 모델 비교 실험 기록
 migrations/20260808000700_users_usage.sql       -- 직원 켜고 끄기 · 근무 시간 · 사용 기록
+migrations/20260809000100_work_hours.sql       -- 근무 시간을 요일별로
 ```
 
 CLI를 쓴다면 `supabase db push`도 같은 일을 합니다.
