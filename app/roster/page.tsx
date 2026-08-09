@@ -75,7 +75,7 @@ function Roster({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
         따로 둡니다. 학원 이름 없는 명단은 어디서 나온 종이인지 알 수 없습니다.
       */}
       <div className="mb-3 hidden items-center gap-2 border-b border-slate-300 pb-2 print:flex">
-        <Crown className="h-8 w-auto" mono="#25356E" />
+        <Crown className="h-9 w-auto" />
         <div>
           <p className="text-base font-black tracking-tight text-[#25356E]">{ACADEMY}</p>
           <p className="text-xs text-slate-600">{day} 시험 결과</p>

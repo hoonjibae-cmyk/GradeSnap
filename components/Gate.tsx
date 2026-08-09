@@ -69,7 +69,7 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
   if (state === "notstaff") {
     return (
       <main className="mx-auto max-w-sm p-6">
-        <Wordmark stacked className="mb-6" />
+        <Wordmark className="mx-auto mb-6 h-20 w-auto" />
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           로그인은 됐지만 <strong>직원 명부에 없습니다.</strong> 원장님께 등록을 요청하십시오.
         </p>
@@ -83,7 +83,7 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
   if (state === "out") {
     return (
       <main className="mx-auto max-w-sm p-6 pt-12">
-        <Wordmark stacked />
+        <Wordmark className="mx-auto h-28 w-auto" />
         <div className="mt-5 text-center">
           <h1 className="text-2xl font-bold tracking-tight">GradeSnap</h1>
           <p className="mt-1 text-sm text-slate-600">찍으면 채점되는 AI 답안 채점</p>

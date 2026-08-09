@@ -6,7 +6,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "logo": "node scripts/logo.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
