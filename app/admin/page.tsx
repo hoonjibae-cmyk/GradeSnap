@@ -13,7 +13,18 @@ import {
   type RetentionStatus,
 } from "@/lib/db/queries";
 import type { Role, SettingsRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
-import { byHour, byStaff, DAY_NAMES, describeHours, isOffHours, totals, type DayHours, type WorkHours } from "@/lib/usage";
+import {
+  byHour,
+  byStaff,
+  DAY_NAMES,
+  DEFAULT_HOURS,
+  describeHours,
+  isOffHours,
+  normalizeHours,
+  totals,
+  type DayHours,
+  type WorkHours,
+} from "@/lib/usage";
 
 /**
  * 관리 화면 — 직원, 사용량, 사진 보관.
@@ -81,7 +92,13 @@ function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => vo
 
   if (!cfg) return <section className="mb-6 text-sm text-slate-500">불러오는 중…</section>;
 
-  const hours: WorkHours = cfg.work_hours;
+  /*
+    설정을 못 읽으면 **읽었다고 치지 않습니다.** 마이그레이션이 아직 안 돌아
+    칸 자체가 없을 수 있고, 그때 조용히 기본값을 쓰면 화면의 '근무 시간 외'가
+    거짓말을 합니다. 숫자는 기본값으로 그리되 **틀릴 수 있다고 적습니다.**
+  */
+  const stored = normalizeHours(cfg.work_hours);
+  const hours: WorkHours = stored ?? DEFAULT_HOURS;
   const rows = byStaff(events, hours);
   const sum = totals(rows);
   const bins = byHour(events, hours);
@@ -112,6 +129,17 @@ function Usage({ db, onError }: { db: SupabaseClient; onError: (m: string) => vo
           tone={sum.offHours > 0 ? "warn" : undefined}
         />
       </dl>
+
+      {!stored && (
+        <p className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-2 text-sm text-rose-900">
+          🔴 <strong>근무 시간 설정을 읽지 못했습니다.</strong> 아래 숫자는 임시 기준(월~토 13~23시)으로 센
+          것이라 <strong>믿으면 안 됩니다.</strong>
+          <br />
+          <span className="text-xs">
+            마이그레이션 <code>20260809000100_work_hours.sql</code>을 아직 안 돌리셨을 수 있습니다.
+          </span>
+        </p>
+      )}
 
       {/* 근무 시간 — 무엇이 '밖'인지의 기준이라 화면에 늘 보여야 합니다. */}
       <div className="mt-3 rounded-lg bg-slate-100 p-2 text-xs text-slate-600">
@@ -236,7 +264,7 @@ function HoursForm({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const [rows, setRows] = useState<WorkHours>(cfg.work_hours);
+  const [rows, setRows] = useState<WorkHours>(normalizeHours(cfg.work_hours) ?? DEFAULT_HOURS);
   const [busy, setBusy] = useState(false);
 
   const set = (d: number, h: DayHours) => setRows((p) => p.map((x, i) => (i === d ? h : x)));

@@ -31,6 +31,37 @@ export const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 const WEEKDAY: DayHours = { start: 13, end: 23 };
 export const DEFAULT_HOURS: WorkHours = [null, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY];
 
+/**
+ * DB에서 온 값을 믿을 수 있는 모양으로 바꿉니다.
+ *
+ * **모양이 아니면 `null`을 돌려줍니다 — 기본값으로 슬쩍 메우지 않습니다.**
+ * 설정을 못 읽었는데 아무 일 없는 척하면
+ *
+ *   - 전부 근무 시간으로 치면 → 사적 사용이 조용히 묻히고
+ *   - 전부 근무 시간 외로 치면 → 멀쩡한 직원이 무더기로 찍힙니다
+ *
+ * 둘 다 사람에 관한 판단이라 추측하면 안 됩니다. 못 읽었으면 못 읽었다고
+ * 화면에 말하는 것이 맞습니다.
+ *
+ * 실제로 마이그레이션을 돌리기 전에 배포가 먼저 붙어 이 값이 `undefined`가
+ * 됐고, 화면이 통째로 죽었습니다.
+ */
+export function normalizeHours(value: unknown): WorkHours | null {
+  if (!Array.isArray(value) || value.length !== 7) return null;
+  const out: WorkHours = [];
+  for (const v of value) {
+    if (v === null || v === undefined) {
+      out.push(null);
+      continue;
+    }
+    const h = v as { start?: unknown; end?: unknown };
+    if (typeof h.start !== "number" || typeof h.end !== "number") return null;
+    if (h.start < 0 || h.end > 24 || h.start >= h.end) return null;
+    out.push({ start: h.start, end: h.end });
+  }
+  return out;
+}
+
 /** 그 시각의 한국 기준 요일과 시각. */
 export function kst(iso: string): { day: number; hour: number } {
   const d = new Date(new Date(iso).getTime() + KST_OFFSET_MS);

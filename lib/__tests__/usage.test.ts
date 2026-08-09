@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UsageEventRow } from "@/lib/db/schema";
-import { byHour, byStaff, DEFAULT_HOURS, describeHours, isOffHours, kst, totals, type WorkHours } from "../usage";
+import { byHour, byStaff, DEFAULT_HOURS, describeHours, isOffHours, kst, normalizeHours, totals, type WorkHours } from "../usage";
 
 /** 2026-08-10은 월요일입니다. */
 const mon = (hhmmKst: string) => {
@@ -152,6 +152,35 @@ describe("근무 시간을 한 줄로 적기", () => {
 
   it("근무일이 하나도 없으면 그렇게 말한다", () => {
     expect(describeHours(w(null, null, null, null, null, null, null))).toBe("근무일이 없습니다");
+  });
+});
+
+describe("DB에서 온 근무 시간 다듬기", () => {
+  it("제대로 된 값은 그대로 통과시킨다", () => {
+    const v = [null, { start: 17, end: 22 }, null, null, null, null, { start: 9, end: 13 }];
+    expect(normalizeHours(v)).toEqual(v);
+  });
+
+  it("칸이 없으면 null — 기본값으로 슬쩍 메우지 않는다", () => {
+    /*
+      마이그레이션 전에 배포가 먼저 붙으면 이 값이 undefined입니다.
+      기본값으로 메우면 화면의 '근무 시간 외'가 조용히 거짓말을 하고,
+      그 숫자로 직원을 봅니다.
+    */
+    expect(normalizeHours(undefined)).toBeNull();
+    expect(normalizeHours(null)).toBeNull();
+  });
+
+  it("길이가 7이 아니면 null — 요일과 칸이 어긋난다", () => {
+    expect(normalizeHours([null, null, null])).toBeNull();
+  });
+
+  it("시각이 뒤집혔거나 범위를 벗어나면 null", () => {
+    const bad = (h: unknown) => [h, null, null, null, null, null, null];
+    expect(normalizeHours(bad({ start: 20, end: 9 }))).toBeNull();
+    expect(normalizeHours(bad({ start: -1, end: 9 }))).toBeNull();
+    expect(normalizeHours(bad({ start: 9, end: 25 }))).toBeNull();
+    expect(normalizeHours(bad({ start: "9", end: 13 }))).toBeNull();
   });
 });
 
