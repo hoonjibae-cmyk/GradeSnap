@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "GradeSnap — 찍으면 채점",
     short_name: "GradeSnap",
-    description: "답안지를 찍어 올리면 채점하고, 재시험 명단까지 만듭니다.",
+    description: "목동유쌤영어 — 답안지를 찍어 올리면 채점하고, 재시험 명단까지 만듭니다.",
     start_url: "/",
     display: "standalone",
     background_color: "#f8fafc",

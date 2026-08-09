@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "GradeSnap",
-  description: "찍으면 채점되는 AI 답안 채점",
+  description: "목동유쌤영어 · 찍으면 채점되는 AI 답안 채점",
   appleWebApp: { capable: true, title: "GradeSnap", statusBarStyle: "default" },
 };
 
