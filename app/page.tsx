@@ -6,6 +6,7 @@ import { Bar, Gate } from "@/components/Gate";
 import { deleteSheet, intake, retrySheet, sheetsOn } from "@/lib/db/queries";
 import { needsReview, type SheetRow, type StaffRow } from "@/lib/db/schema";
 import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
+import { pushRecent } from "@/lib/recent";
 
 /**
  * 접수 화면 — 조교가 하루 종일 열어두는 곳입니다.
@@ -167,28 +168,36 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 
 function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: SheetRow) => void }) {
   const [imgs, setImgs] = useState<PreparedImage[]>([]);
+  // **반도 이름과 마찬가지로 다음 학생에게 안 남깁니다.** 반이 계속 바뀌는데
+  // 남겨두면 앞 반 이름을 달고 접수되고, 화면에는 아무 표시도 안 뜹니다.
+  // 대신 최근에 쓴 반을 단추로 내놓아 한 번 누르면 되게 했습니다.
   const [className, setClassName] = useState("");
-  // **다음 학생에게 안 남깁니다.** 남으면 앞 학생 이름을 달고 채점됩니다.
+  const [recent, setRecent] = useState<string[]>([]);
   const [studentName, setStudentName] = useState("");
   const [strict, setStrict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // 반과 철자 방침은 학생이 바뀌어도 그대로입니다. 매번 다시 고르게 하지 않습니다.
-  // **학생 이름은 여기 안 넣습니다** — 저장했다가 다음 학생에게 되살아나면
-  // 그게 이 화면에서 가장 조용한 오류입니다.
+  /*
+    기기에 남기는 것은 두 가지뿐입니다.
+
+      strict   철자 방침 — 학생마다 바뀌는 값이 아니라 학원 방침입니다
+      recent   최근 쓴 반 목록 — **값이 아니라 후보**입니다
+
+    반과 이름은 **값을 안 남깁니다.** 남기면 다음 학생에게 조용히 붙습니다.
+  */
   useEffect(() => {
     try {
       const p = JSON.parse(localStorage.getItem(PREFS) ?? "{}");
-      if (typeof p.className === "string") setClassName(p.className);
       if (typeof p.strict === "boolean") setStrict(p.strict);
+      if (Array.isArray(p.recent)) setRecent(p.recent.filter((x: unknown) => typeof x === "string").slice(0, 6));
     } catch {
       /* 저장된 게 깨졌으면 그냥 기본값으로 */
     }
   }, []);
   useEffect(() => {
-    localStorage.setItem(PREFS, JSON.stringify({ className, strict }));
-  }, [className, strict]);
+    localStorage.setItem(PREFS, JSON.stringify({ strict, recent }));
+  }, [strict, recent]);
 
   async function onPick(files: FileList | null) {
     if (!files?.length) return;
@@ -211,8 +220,12 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
     setErr(null);
     try {
       const sheet = await intake(db, imgs, { className, studentName, cutLine: "", strictSpelling: strict });
-      setImgs([]); // 다음 학생을 바로 받을 수 있게 비웁니다.
-      setStudentName(""); // 반은 남기고 **이름만 지웁니다.**
+      // 다음 학생을 바로 받을 수 있게 **전부 비웁니다.** 방금 쓴 반은
+      // 값이 아니라 후보로만 남아, 같은 반이면 한 번 눌러 다시 넣습니다.
+      setRecent((r) => pushRecent(r, className));
+      setImgs([]);
+      setStudentName("");
+      setClassName("");
       onReceived(sheet);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -250,11 +263,35 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={strict} onChange={(e) => setStrict(e.target.checked)} />
           <span>철자 엄격</span>
+          <span className="text-xs text-slate-500">(계속 유지)</span>
         </label>
       </div>
+
+      {/* 최근 쓴 반. **값을 남기는 게 아니라 후보를 내놓는 것**이라 잘못 붙을 일이 없습니다. */}
+      {recent.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {recent.map((c) => (
+            <button
+              key={c}
+              onClick={() => setClassName(c)}
+              className={`rounded-full border px-2.5 py-1 text-xs ${
+                className === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+          {className && (
+            <button onClick={() => setClassName("")} className="px-1.5 text-xs text-slate-400 underline">
+              지우기
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="mt-1.5 text-xs text-slate-500">
-        위 두 가지는 <strong className="font-medium text-slate-600">다음 학생에도 그대로 유지됩니다.</strong> 반이
-        바뀌면 여기서 바꾸십시오.
+        반은 <strong className="font-medium text-slate-600">접수하면 비워집니다.</strong>{" "}
+        {recent.length > 0 ? "같은 반이면 위 단추를 누르십시오." : "한 번 쓰면 다음부터 단추로 나옵니다."}
       </p>
 
       <label className="mt-4 block border-t border-slate-100 pt-3">
