@@ -175,6 +175,8 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
   const [err, setErr] = useState<string | null>(null);
 
   // 반과 철자 방침은 학생이 바뀌어도 그대로입니다. 매번 다시 고르게 하지 않습니다.
+  // **학생 이름은 여기 안 넣습니다** — 저장했다가 다음 학생에게 되살아나면
+  // 그게 이 화면에서 가장 조용한 오류입니다.
   useEffect(() => {
     try {
       const p = JSON.parse(localStorage.getItem(PREFS) ?? "{}");
@@ -221,7 +223,21 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      {/*
+        이 화면에는 성질이 반대인 칸이 섞여 있습니다.
+
+          반·철자   다음 학생에도 남는다
+          학생 이름  접수하면 비워진다
+
+        **설명을 두 무리 사이에 한 줄로 띄우면 어느 쪽 이야기인지 알 수 없습니다.**
+        실제로 "한 번 정해두면 다음 학생에도 그대로 붙습니다"가 반·철자 밑이자
+        이름 칸 위에 떠 있어서, 이름도 남는다고 읽힐 자리에 있었습니다.
+        그렇게 읽고 이름을 한 번 적어두면 다음 학생부터 조용히 틀립니다.
+
+        그래서 **설명을 각자 자기 칸 바로 밑에** 붙이고, 남는지 비워지는지를
+        두 곳 모두에 적었습니다. 한쪽만 적으면 나머지는 여전히 추측입니다.
+      */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="flex items-center gap-2 text-sm">
           <span className="shrink-0 text-slate-700">반</span>
           <input
@@ -235,15 +251,13 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
           <input type="checkbox" checked={strict} onChange={(e) => setStrict(e.target.checked)} />
           <span>철자 엄격</span>
         </label>
-        <span className="text-xs text-slate-500">반과 철자는 다음 학생에도 그대로 붙습니다.</span>
       </div>
+      <p className="mt-1.5 text-xs text-slate-500">
+        위 두 가지는 <strong className="font-medium text-slate-600">다음 학생에도 그대로 유지됩니다.</strong> 반이
+        바뀌면 여기서 바꾸십시오.
+      </p>
 
-      {/*
-        학생 이름은 **접수할 때마다 비웁니다.** 반과 달리 남겨두면 다음 답안지가
-        앞 학생 이름을 달고 채점되고, 그건 화면 어디에도 티가 안 납니다.
-        그래서 반과 한 줄에 두지 않고 답안지 칸 바로 위에 따로 뒀습니다.
-      */}
-      <label className="mb-3 block border-t border-slate-100 pt-3">
+      <label className="mt-4 block border-t border-slate-100 pt-3">
         <span className="mb-1 block text-sm font-medium">
           학생 이름 <span className="font-normal text-slate-500">— 안 적으면 시험지에서 읽습니다</span>
         </span>
@@ -253,9 +267,12 @@ function Receive({ db, onReceived }: { db: SupabaseClient; onReceived: (s: Sheet
           placeholder="이름을 알고 있으면 적어두십시오"
           className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
+        <span className="mt-1.5 block text-xs text-slate-500">
+          이 학생에게만 붙고, <strong className="font-medium text-slate-600">접수하면 비워집니다.</strong>
+        </span>
       </label>
 
-      <label className="block">
+      <label className="mt-4 block">
         <span className="mb-1 block text-sm font-medium">이 학생의 답안지</span>
         <span className="mb-2 block text-xs text-slate-500">
           <strong>양면이면 앞·뒤를 모두</strong> 찍으십시오. 순서는 상관없습니다 — 문항 번호로 합칩니다.
