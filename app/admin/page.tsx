@@ -6,6 +6,7 @@ import { Bar, Gate } from "@/components/Gate";
 import {
   allStaff,
   getSettings,
+  gradedBetween,
   retentionStatus,
   saveGradingModel,
   saveSettings,
@@ -14,7 +15,9 @@ import {
   type RetentionStatus,
 } from "@/lib/db/queries";
 import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
-import type { Role, SettingsRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
+import { FIXED_INPUT_PER_PAGE, imageTokens, split } from "@/lib/tokens";
+import { estimate, krw, OPUS_LOW } from "@/lib/cost";
+import type { Role, SettingsRow, SheetRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
 import {
   byHour,
   byStaff,
@@ -63,6 +66,7 @@ function Admin({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       <h1 className="mb-4 text-xl font-bold">관리</h1>
       {err && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{err}</p>}
       <Grading db={db} onError={setErr} />
+      <Cost db={db} onError={setErr} />
       <Usage db={db} onError={setErr} />
       <People db={db} meId={staff.id} onError={setErr} />
       <Retention db={db} onError={setErr} />
@@ -198,6 +202,100 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
           <br />
           특히 <strong>FAIL이 섞인 날</strong>로 재야 합니다. 통과한 답안지만 있으면 관대한 모델도 100%가 나옵니다.
         </p>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 비용
+// ---------------------------------------------------------------------------
+
+/** 학원이 예상하는 규모. 원장님이 2026-08-10에 알려주신 값입니다. */
+const PLANNED_PAGES_PER_MONTH = 12_600;
+
+/**
+ * **돈이 어디로 나가는지** 실제 토큰으로 봅니다.
+ *
+ * 절감을 이야기할 때마다 제가 산수로 자릿수를 냈고, 한 번은 세 자릿수 배
+ * 틀렸습니다(docs/13 §13.22). 이 화면이 있으면 그럴 일이 없습니다 —
+ * 사진이 입력의 몇 할인지, 문항이 출력의 몇 할인지가 숫자로 나옵니다.
+ */
+function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => void }) {
+  const [from, setFrom] = useState(daysAgo(29));
+  const [to, setTo] = useState(daysAgo(0));
+  const [sheets, setSheets] = useState<SheetRow[] | null>(null);
+
+  const load = useCallback(async () => {
+    setSheets(await gradedBetween(db, from, to));
+  }, [db, from, to]);
+
+  useEffect(() => {
+    void load().catch((e) => onError(String(e.message ?? e)));
+  }, [load, onError]);
+
+  if (!sheets) return <section className="mb-6 text-sm text-slate-500">불러오는 중…</section>;
+
+  const s = split(sheets);
+  const items = sheets.reduce((a, x) => a + (x.transcript?.items.length ?? 0), 0);
+  const spent = sheets.reduce((a, x) => a + Number(x.cost_usd ?? 0), 0);
+  const img = imageTokens(s, FIXED_INPUT_PER_PAGE);
+  const inTok = s.transcribe.inputTokens + s.judge.inputTokens;
+  const outTok = s.transcribe.outputTokens + s.judge.outputTokens;
+  /*
+    실제로 찍힌 '쪽당 문항'으로 환산합니다. 원장님도 시험지 유형마다 달라
+    확답을 못 하신 값이라, **앱이 세는 것이 맞습니다.**
+  */
+  const perPage = s.pages ? items / s.pages : 0;
+  const plan = estimate({ pages: PLANNED_PAGES_PER_MONTH, itemsPerPage: perPage }, OPUS_LOW);
+  // 입력에서 사진이 차지하는 몫. 해상도를 줄일 값어치가 여기서 정해집니다.
+  const imgShare = inTok ? (img * s.transcribe.calls) / inTok : 0;
+
+  return (
+    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-bold text-slate-700">비용</h2>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+        <span className="text-slate-400">~</span>
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+      </div>
+
+      {s.sheets === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">이 기간에 채점된 답안지가 없습니다.</p>
+      ) : (
+        <>
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <Stat label="채점한 답안지" value={`${s.sheets}장`} sub={`${s.pages}쪽 · ${items}문항`} />
+            <Stat label="쓴 돈" value={`$${spent.toFixed(2)}`} sub={`장당 $${(spent / s.sheets).toFixed(3)}`} />
+            <Stat label="사진이 입력에서" value={`${(imgShare * 100).toFixed(0)}%`} sub={`쪽당 약 ${Math.round(img).toLocaleString()}토큰`} />
+            <Stat label="출력이 비용에서" value={`${((outTok * 25) / (inTok * 5 + outTok * 25) * 100).toFixed(0)}%`} sub={`입력 ${inTok.toLocaleString()} · 출력 ${outTok.toLocaleString()}`} />
+          </dl>
+
+          {/*
+            **이게 이 화면을 만든 이유입니다.** 하루 일곱 장을 보고 월 규모를
+            짐작하면 틀립니다. 실제로 찍힌 쪽당 문항 수로 환산합니다.
+          */}
+          <div className="mt-3 rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm">
+            <p>
+              지금 찍히는 대로면 <strong>쪽당 {perPage.toFixed(1)}문항</strong>입니다. 계획한{" "}
+              <strong>월 {PLANNED_PAGES_PER_MONTH.toLocaleString()}쪽</strong>이면{" "}
+              <strong className="text-rose-700">
+                ${plan.totalUsd.toFixed(0)} · 약 {(krw(plan.totalUsd) / 10_000).toFixed(0)}만원
+              </strong>
+              입니다.
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              사진값 ${plan.pageUsd.toFixed(0)} · 문항값 ${plan.itemUsd.toFixed(0)} (출력이 {(plan.itemShare * 100).toFixed(0)}%)
+              {" — "}
+              사진값은 <strong>해상도</strong>로, 문항값은 <strong>출력 스키마</strong>로 줄입니다.
+            </p>
+            {s.sheets < 30 && (
+              <p className="mt-1 text-xs text-amber-800">
+                🔶 표본이 {s.sheets}장뿐이라 쪽당 문항 수가 실제와 다를 수 있습니다. 수업이 돌기 시작하면 다시 보십시오.
+              </p>
+            )}
+          </div>
+        </>
       )}
     </section>
   );

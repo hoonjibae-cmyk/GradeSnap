@@ -245,6 +245,25 @@ export async function sheetsOn(db: SupabaseClient, day: string): Promise<SheetRo
 }
 
 /**
+ * 기간 안에 채점된 답안지. **비용을 재는 데 씁니다.**
+ *
+ * `usage_events`에는 달러만 있고 토큰이 없습니다. "어디에 돈이 나가는가"는
+ * 토큰을 봐야 알 수 있고, 그건 `sheets.token_usage`에만 있습니다.
+ */
+export async function gradedBetween(db: SupabaseClient, fromDay: string, toDay: string): Promise<SheetRow[]> {
+  return ok(
+    await db
+      .from("sheets")
+      .select("*")
+      .gte("created_at", `${fromDay}T00:00:00`)
+      .lte("created_at", `${toDay}T23:59:59.999`)
+      .not("graded_at", "is", null)
+      .order("created_at", { ascending: false }),
+    "채점 기록",
+  ) as SheetRow[];
+}
+
+/**
  * 그날의 오답 전부. `wrong_items` 뷰는 **선생님이 고친 값**으로 걸러집니다.
  *
  * 확정 여부로 거르지 않습니다 — 아직 확정 안 된 답안지의 오답도 보여야
