@@ -10,6 +10,8 @@ const run = (o: {
   nearBoundary?: boolean;
   costUsd?: number;
   latencyMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }): Run => ({
   model: "m",
   effort: "high",
@@ -22,6 +24,8 @@ const run = (o: {
   margin: o.wrong.length - (o.cut ?? 5),
   costUsd: o.costUsd ?? 0.1,
   latencyMs: o.latencyMs ?? 1000,
+  inputTokens: o.inputTokens ?? 5000,
+  outputTokens: o.outputTokens ?? 3000,
 });
 
 describe("두 모델을 나란히 놓기", () => {
@@ -157,5 +161,34 @@ describe("모아서 세기", () => {
   it("분모가 0이면 100%가 아니라 '없음'이다", () => {
     expect(pct(0, 0)).toBe("—");
     expect(pct(1, 2)).toBe("50.0%");
+  });
+});
+
+describe("입력·출력 토큰", () => {
+  /*
+    비용만 보면 **어느 쪽이 줄었는지 모릅니다.** 해상도는 입력에만, 출력
+    스키마는 출력에만 붙습니다. 사진을 줄였는데 출력이 늘면 합계는 그대로일
+    수 있고, 그러면 "줄여도 안 아껴진다"는 잘못된 결론이 납니다 —
+    2026-08-11 해상도 실험에서 실제로 그럴 뻔했습니다.
+  */
+  const base = run({ cells: [["1", "a"]], wrong: [], inputTokens: 10_000, outputTokens: 3_000 });
+
+  it("입력이 줄고 출력이 늘면 둘 다 보인다", () => {
+    const trial = run({ cells: [["1", "a"]], wrong: [], inputTokens: 6_000, outputTokens: 3_600 });
+    const s = summarize([{ base, diff: diffRuns(base, trial) }]);
+    expect(s.trialIn).toBe(6_000);
+    expect(s.baseIn).toBe(10_000);
+    expect(s.trialOut).toBe(3_600);
+    expect(s.baseOut).toBe(3_000);
+  });
+
+  it("여러 장을 더한다", () => {
+    const d = diffRuns(base, run({ cells: [["1", "a"]], wrong: [], inputTokens: 6_000, outputTokens: 3_600 }));
+    const s = summarize([
+      { base, diff: d },
+      { base, diff: d },
+    ]);
+    expect(s.trialIn).toBe(12_000);
+    expect(s.baseOut).toBe(6_000);
   });
 });

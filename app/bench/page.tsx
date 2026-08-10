@@ -200,6 +200,8 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       margin: cmpBase.margin,
       costUsd: Number(s.cost_usd ?? 0),
       latencyMs: (s.token_usage ?? []).reduce((a, u) => a + u.latencyMs, 0),
+      inputTokens: (s.token_usage ?? []).reduce((a, u) => a + u.inputTokens, 0),
+      outputTokens: (s.token_usage ?? []).reduce((a, u) => a + u.outputTokens, 0),
     };
     const trial: Run = {
       model: t.model,
@@ -213,6 +215,8 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       margin: t.margin,
       costUsd: Number(t.cost_usd ?? 0),
       latencyMs: t.latency_ms ?? 0,
+      inputTokens: (t.token_usage ?? []).reduce((a, u) => a + u.inputTokens, 0),
+      outputTokens: (t.token_usage ?? []).reduce((a, u) => a + u.outputTokens, 0),
     };
     pairs.push({ sheet: s, trial: t, base, diff: diffRuns(base, trial) });
   }
@@ -532,9 +536,31 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
               비용도 같이 비교됩니다. <strong>시간과 판정은 지금도 비교됩니다.</strong>
             </p>
           )}
-          <p className="mt-2 text-xs text-slate-500">
-            시간 {(sum.trialMs / 1000).toFixed(0)}초 (기준 {(sum.baseMs / 1000).toFixed(0)}초)
-          </p>
+          {/*
+            **비용만 보면 무엇이 통했는지 모릅니다.** 해상도는 입력에만,
+            출력 스키마는 출력에만 붙습니다. 사진을 줄였는데 출력이 늘면
+            합계는 그대로일 수 있고, 그러면 "줄여도 안 아껴진다"는 잘못된
+            결론이 납니다 — 2026-08-11에 실제로 그럴 뻔했습니다.
+          */}
+          <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+            <span>
+              입력 <strong>{sum.trialIn.toLocaleString()}</strong>{" "}
+              <span className="text-slate-400">/ 기준 {sum.baseIn.toLocaleString()}</span>{" "}
+              <span className={sum.trialIn < sum.baseIn ? "text-emerald-700" : "text-slate-500"}>
+                {pct(sum.trialIn, sum.baseIn)}
+              </span>
+            </span>
+            <span>
+              출력 <strong>{sum.trialOut.toLocaleString()}</strong>{" "}
+              <span className="text-slate-400">/ 기준 {sum.baseOut.toLocaleString()}</span>{" "}
+              <span className={sum.trialOut < sum.baseOut ? "text-emerald-700" : "text-rose-700"}>
+                {pct(sum.trialOut, sum.baseOut)}
+              </span>
+            </span>
+            <span>
+              시간 {(sum.trialMs / 1000).toFixed(0)}초 <span className="text-slate-400">/ 기준 {(sum.baseMs / 1000).toFixed(0)}초</span>
+            </span>
+          </div>
         </section>
       )}
 

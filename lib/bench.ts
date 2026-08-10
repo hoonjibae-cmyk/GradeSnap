@@ -28,6 +28,13 @@ export interface Run {
   margin: number | null;
   costUsd: number;
   latencyMs: number;
+  /**
+   * 쓴 토큰. **해상도를 재려면 비용만으로는 부족합니다** —
+   * 사진을 줄였는데 출력이 늘면 합계는 그대로일 수 있고, 그러면
+   * "줄여도 안 아껴진다"는 잘못된 결론이 납니다(2026-08-11).
+   */
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export interface Diff {
@@ -67,6 +74,9 @@ export interface Diff {
 
   costUsd: number;
   latencyMs: number;
+  /** 대상이 쓴 토큰. 입력이 줄었는지 출력이 늘었는지를 가릅니다. */
+  inputTokens: number;
+  outputTokens: number;
 }
 
 const wrongSet = (r: JudgeResult[]) => new Set(r.filter((x) => !x.correct).map((x) => x.no));
@@ -106,6 +116,8 @@ export function diffRuns(base: Run, trial: Run): Diff {
 
     costUsd: trial.costUsd,
     latencyMs: trial.latencyMs,
+    inputTokens: trial.inputTokens,
+    outputTokens: trial.outputTokens,
   };
 }
 
@@ -159,6 +171,17 @@ export interface Summary {
   trialCost: number;
   baseMs: number;
   trialMs: number;
+  /**
+   * 입력·출력을 따로 셉니다.
+   *
+   * 합계만 보면 **어느 쪽이 줄었는지 모릅니다.** 해상도는 입력에만,
+   * 출력 스키마는 출력에만 붙으므로 가르지 않으면 무엇이 통했는지
+   * 말할 수 없습니다.
+   */
+  baseIn: number;
+  baseOut: number;
+  trialIn: number;
+  trialOut: number;
 }
 
 export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
@@ -182,6 +205,10 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     trialCost: 0,
     baseMs: 0,
     trialMs: 0,
+    baseIn: 0,
+    baseOut: 0,
+    trialIn: 0,
+    trialOut: 0,
   };
   for (const { base, diff } of pairs) {
     if (diff.verdictMatch === null) {
@@ -210,6 +237,10 @@ export function summarize(pairs: { base: Run; diff: Diff }[]): Summary {
     s.trialCost += diff.costUsd;
     s.baseMs += base.latencyMs;
     s.trialMs += diff.latencyMs;
+    s.baseIn += base.inputTokens;
+    s.baseOut += base.outputTokens;
+    s.trialIn += diff.inputTokens;
+    s.trialOut += diff.outputTokens;
   }
   return s;
 }
