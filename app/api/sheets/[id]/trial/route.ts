@@ -13,6 +13,8 @@ export const maxDuration = 300;
 
 /** 실험에 쓸 수 있는 조합. 아무 문자열이나 받으면 오타로 돈이 나갑니다. */
 const EFFORTS = ["low", "medium", "high"] as const;
+/** 출력 JSON 형식. `compact`는 필드 이름을 짧게 받습니다(docs/13 §13.21). */
+const VARIANTS = ["full", "compact"] as const;
 
 /**
  * **같은 답안지를 다른 모델로 다시 채점해 봅니다.**
@@ -35,10 +37,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   let model: string;
   let effort: string;
+  let variant: string;
   try {
-    const body = (await req.json()) as { model?: string; effort?: string };
+    const body = (await req.json()) as { model?: string; effort?: string; variant?: string };
     model = String(body?.model ?? "");
     effort = String(body?.effort ?? "high");
+    variant = String(body?.variant ?? "full");
   } catch {
     return NextResponse.json({ error: "요청 본문을 읽을 수 없습니다." }, { status: 400 });
   }
@@ -50,6 +54,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (!EFFORTS.includes(effort as (typeof EFFORTS)[number])) {
     return NextResponse.json({ error: `모르는 사고 강도입니다: ${effort}` }, { status: 400 });
+  }
+  if (!VARIANTS.includes(variant as (typeof VARIANTS)[number])) {
+    return NextResponse.json({ error: `모르는 출력 형식입니다: ${variant}` }, { status: 400 });
   }
 
   const db = userClient(token);
@@ -79,7 +86,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ ok: false, setup: true, error: message }, { status: 400 });
   }
 
-  const opts: CallOptions = { model, effort: effort as CallOptions["effort"] };
+  const opts: CallOptions = { model, effort: effort as CallOptions["effort"], compact: variant === "compact" };
   const t0 = Date.now();
 
   try {
@@ -113,6 +120,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       sheet_id: id,
       model,
       effort,
+      variant,
       transcript,
       results,
       warnings,
@@ -150,6 +158,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         sheet_id: id,
         model,
         effort,
+        variant,
         transcript: null,
         results: null,
         warnings: [],

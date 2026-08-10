@@ -159,6 +159,8 @@ export interface ModelTrialRow {
   sheet_id: string;
   model: string;
   effort: string;
+  /** 출력 JSON 형식. `compact`는 필드 이름을 짧게 받은 것(docs/13 §13.21). */
+  variant: string;
   transcript: { sheet: SheetHead; items: Item[] } | null;
   results: JudgeResult[] | null;
   warnings: Warning[];
@@ -239,7 +241,7 @@ export function toItemRows(sheetId: string, items: Item[], results: JudgeResult[
       blank: it.blank,
       legible: it.legible,
       erased: it.erased,
-      confidence: it.confidence,
+      confidence: it.confidence ?? null,
       correct: j ? j.correct : null,
       expected: j?.expected ?? "",
       note: j?.note ?? "",

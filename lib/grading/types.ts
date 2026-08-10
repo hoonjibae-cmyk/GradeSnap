@@ -33,7 +33,15 @@ export interface Item {
   blank: boolean;
   legible: boolean;
   erased: boolean;
-  confidence: number;
+  /**
+   * 압축 출력에서는 **안 받습니다**(docs/13 §13.21).
+   *
+   * 문항마다 18자를 쓰는데 쓰는 곳은 한 군데(양면이 겹쳤을 때 어느 쪽을
+   * 남길지)뿐이고, [12 §12.13](../../docs/12-page-level-grading.md)에서
+   * **고쳐 읽기를 못 잡는다는 것이 확인된** 값입니다. 모델은 고쳐 읽으면서
+   * 0.90·0.93으로 확신에 차 있었습니다.
+   */
+  confidence?: number;
 }
 
 export interface Transcript {

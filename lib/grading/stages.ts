@@ -1,6 +1,7 @@
 import type { CallOptions, ImageInput, ModelClient } from "./provider";
 import { JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeSystem } from "./prompts";
 import { JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
+import { ITEM_KEYS, RESULT_KEYS, compactJudgeSchema, compactTranscribeSchema, expand } from "./compact";
 import type { Item, JudgeResult, MarkReading, Sheet, Transcript, Usage } from "./types";
 
 /**
@@ -21,16 +22,24 @@ export async function transcribe(
   image: ImageInput,
   opts?: CallOptions,
 ): Promise<{ transcript: Transcript; usage: Usage }> {
+  /*
+    압축판은 **필드 이름만 짧습니다.** 문항 하나의 JSON에서 이름이 58%를
+    차지하는데 그건 아무 정보도 안 나릅니다(docs/13 §13.21). 뜻은
+    `description`이 그대로 나르고, 받은 뒤에 원래 이름으로 되돌리므로
+    이 함수 바깥은 아무것도 안 바뀝니다.
+  */
+  const compact = opts?.compact === true;
   const { data, usage } = await client.callJson<RawTranscript>(
     {
       system: TRANSCRIBE_SYSTEM,
       text: "이 답안지의 모든 문항을 전사하십시오. 빈칸도 빠짐없이 포함하십시오.",
       images: [image],
-      schema: TRANSCRIBE_SCHEMA,
+      schema: compact ? compactTranscribeSchema(TRANSCRIBE_SCHEMA) : TRANSCRIBE_SCHEMA,
     },
     opts,
   );
 
+  const items = compact ? data.items.map((r) => expand<Item>(r as Record<string, unknown>, ITEM_KEYS)) : data.items;
   const sheet: Sheet = {
     title: data.sheet.title,
     teacher: data.sheet.teacher,
@@ -38,7 +47,7 @@ export async function transcribe(
     cutLine: data.sheet.cut_line,
     printedTotal: data.sheet.printed_total,
   };
-  return { transcript: { sheet, items: data.items }, usage };
+  return { transcript: { sheet, items }, usage };
 }
 
 interface RawMarks {
@@ -104,15 +113,20 @@ export async function judge(
     legible: i.legible,
   }));
 
+  const compact = opts?.compact === true;
   const { data, usage } = await client.callJson<{ results: JudgeResult[] }>(
     {
       system: judgeSystem(strictSpelling),
-      text: "아래는 한 답안지를 전사한 결과입니다. 문항마다 정오를 판정하십시오.\n\n" + JSON.stringify(payload, null, 1),
-      schema: JUDGE_SCHEMA,
+      // 들여쓰기를 안 씁니다. 판정 단계는 이 JSON이 통째로 입력 토큰입니다.
+      text: "아래는 한 답안지를 전사한 결과입니다. 문항마다 정오를 판정하십시오.\n\n" + JSON.stringify(payload),
+      schema: compact ? compactJudgeSchema(JUDGE_SCHEMA) : JUDGE_SCHEMA,
     },
     opts,
   );
-  return { results: data.results, usage };
+  const results = compact
+    ? data.results.map((r) => expand<JudgeResult>(r as unknown as Record<string, unknown>, RESULT_KEYS))
+    : data.results;
+  return { results, usage };
 }
 
 export { JUDGE_SYSTEM };

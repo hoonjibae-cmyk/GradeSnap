@@ -23,6 +23,14 @@ export default function BenchPage() {
 /** 목록은 `lib/grading/provider.ts` 한 곳에서 옵니다 — 화면과 서버가 갈리면 안 됩니다. */
 const MODELS = CATALOG;
 const EFFORTS = ["high", "medium", "low"];
+/**
+ * 출력 JSON 형식. 모델만이 비용을 정하는 게 아닙니다 — **우리가 요구한
+ * 모양**도 정합니다(docs/13 §13.21). 문항 하나의 58%가 필드 이름입니다.
+ */
+const VARIANTS = [
+  { id: "full", label: "지금 형식", note: "필드 이름 그대로" },
+  { id: "compact", label: "압축", note: "필드 이름을 짧게 + confidence 뺌 — 출력 약 36% 감소 예상" },
+];
 /** 실험은 급하지 않습니다. 실제 채점이 밀리지 않게 둘만 씁니다. */
 const LANES = 2;
 
@@ -38,6 +46,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   const [day, setDay] = useState(todayLocal());
   const [model, setModel] = useState(MODELS[0].id);
   const [effort, setEffort] = useState("high");
+  const [variant, setVariant] = useState("full");
   const [sheets, setSheets] = useState<SheetRow[]>([]);
   const [items, setItems] = useState<ItemRow[]>([]);
   const [trials, setTrials] = useState<ModelTrialRow[]>([]);
@@ -68,7 +77,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     const r = await fetch(`/api/sheets/${sheetId}/trial`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
-      body: JSON.stringify({ model, effort }),
+      body: JSON.stringify({ model, effort, variant }),
     });
     const j = await r.json();
     if (j?.setup) throw new SetupError(j?.error ?? "설정이 덜 됐습니다.");
@@ -106,7 +115,9 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   // 이 조합의 가장 최근 실험만 씁니다. 같은 조건을 두 번 돌렸으면 나중 것.
   const latest = new Map<string, ModelTrialRow>();
   for (const t of trials) {
-    if (t.model === model && t.effort === effort && !latest.has(t.sheet_id)) latest.set(t.sheet_id, t);
+    // 형식도 조건입니다. 안 걸러내면 지난 실험과 이번 실험이 섞입니다.
+    const v = t.variant ?? "full";
+    if (t.model === model && t.effort === effort && v === variant && !latest.has(t.sheet_id)) latest.set(t.sheet_id, t);
   }
 
   const pairs: { sheet: SheetRow; trial: ModelTrialRow; base: Run; diff: Diff }[] = [];
@@ -273,6 +284,20 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
               ))}
             </select>
           </label>
+          <label className="text-sm">
+            <span className="block text-slate-700">출력 형식</span>
+            <select
+              value={variant}
+              onChange={(e) => setVariant(e.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+            >
+              {VARIANTS.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             onClick={() => void run(untried)}
             disabled={running > 0 || untried.length === 0}
@@ -311,6 +336,9 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
         </div>
         <p className="mt-2 text-xs text-slate-500">
           {chosen?.note}
+          {variant !== "full" && (
+            <span className="ml-2 text-slate-600">· {VARIANTS.find((v) => v.id === variant)?.note}</span>
+          )}
           {pairs.length > 0 && (
             <span className="ml-2">
               · 기준은 {pairs[0].base.model} · {pairs[0].base.effort}

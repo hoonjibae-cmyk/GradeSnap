@@ -22,6 +22,11 @@ export interface CallOptions {
    * (adaptive가 알아서 안 씁니다). 마크 판독처럼 따져야 하는 단계에는 필요합니다.
    */
   thinking?: boolean;
+  /**
+   * 출력 JSON의 **필드 이름을 짧게** 받습니다(docs/13 §13.21).
+   * 뜻과 값은 그대로이고, 받은 뒤 원래 이름으로 되돌립니다.
+   */
+  compact?: boolean;
 }
 
 export interface ImageInput {
