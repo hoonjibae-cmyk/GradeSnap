@@ -16,7 +16,7 @@ import {
 } from "@/lib/db/queries";
 import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
 import { FIXED_INPUT_PER_PAGE, imageTokens, split } from "@/lib/tokens";
-import { estimate, krw, OPUS_LOW } from "@/lib/cost";
+import { breakdown, edgeFactor, krw, project, saving } from "@/lib/cost";
 import type { Role, SettingsRow, SheetRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
 import {
   byHour,
@@ -239,17 +239,32 @@ function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => voi
   const s = split(sheets);
   const items = sheets.reduce((a, x) => a + (x.transcript?.items.length ?? 0), 0);
   const spent = sheets.reduce((a, x) => a + Number(x.cost_usd ?? 0), 0);
-  const img = imageTokens(s, FIXED_INPUT_PER_PAGE);
   const inTok = s.transcribe.inputTokens + s.judge.inputTokens;
-  const outTok = s.transcribe.outputTokens + s.judge.outputTokens;
+  const imgPerPage = imageTokens(s, FIXED_INPUT_PER_PAGE);
   /*
-    실제로 찍힌 '쪽당 문항'으로 환산합니다. 원장님도 시험지 유형마다 달라
-    확답을 못 하신 값이라, **앱이 세는 것이 맞습니다.**
+    🔴 여기서 **재는 것만** 씁니다.
+
+    예전에는 답안지 두 장에 맞춘 `쪽당 + 문항당` 모형으로 환산했는데, 그게
+    출력을 35%라고 말했습니다. 실측은 62%였고, **같은 상자 안에서 두 숫자가
+    서로 다른 말을 하고 있었습니다.** 모형을 버렸습니다(docs/13 §13.24).
   */
+  const measured = {
+    pages: s.pages,
+    items,
+    imageTokens: imgPerPage * s.pages,
+    otherInputTokens: Math.max(0, inTok - imgPerPage * s.pages),
+    outputTokens: s.transcribe.outputTokens + s.judge.outputTokens,
+  };
+  const now = breakdown(measured);
+  const plan = project(measured, PLANNED_PAGES_PER_MONTH);
   const perPage = s.pages ? items / s.pages : 0;
-  const plan = estimate({ pages: PLANNED_PAGES_PER_MONTH, itemsPerPage: perPage }, OPUS_LOW);
-  // 입력에서 사진이 차지하는 몫. 해상도를 줄일 값어치가 여기서 정해집니다.
-  const imgShare = inTok ? (img * s.transcribe.calls) / inTok : 0;
+  const man = (usd: number) => (krw(usd) / 10_000).toFixed(0);
+  const levers = [
+    { label: "긴 변 2576→1800", usd: saving(measured, PLANNED_PAGES_PER_MONTH, { name: "", image: edgeFactor(2576, 1800) }) },
+    { label: "긴 변 2576→1288", usd: saving(measured, PLANNED_PAGES_PER_MONTH, { name: "", image: edgeFactor(2576, 1288) }) },
+    // 실측값입니다(docs/13 §13.21). 예측이 아니라 재본 것을 씁니다.
+    { label: "출력 스키마 압축 (실측 −7.6%)", usd: plan.totalUsd * 0.076 },
+  ];
 
   return (
     <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
@@ -267,28 +282,53 @@ function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => voi
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <Stat label="채점한 답안지" value={`${s.sheets}장`} sub={`${s.pages}쪽 · ${items}문항`} />
             <Stat label="쓴 돈" value={`$${spent.toFixed(2)}`} sub={`장당 $${(spent / s.sheets).toFixed(3)}`} />
-            <Stat label="사진이 입력에서" value={`${(imgShare * 100).toFixed(0)}%`} sub={`쪽당 약 ${Math.round(img).toLocaleString()}토큰`} />
-            <Stat label="출력이 비용에서" value={`${((outTok * 25) / (inTok * 5 + outTok * 25) * 100).toFixed(0)}%`} sub={`입력 ${inTok.toLocaleString()} · 출력 ${outTok.toLocaleString()}`} />
+            <Stat
+              label="사진이 비용에서"
+              value={`${(now.image.share * 100).toFixed(0)}%`}
+              sub={`쪽당 약 ${Math.round(imgPerPage).toLocaleString()}토큰`}
+            />
+            <Stat
+              label="출력이 비용에서"
+              value={`${(now.output.share * 100).toFixed(0)}%`}
+              sub={`문항당 약 ${s.pages ? Math.round(measured.outputTokens / Math.max(1, items)) : 0}토큰`}
+            />
           </dl>
 
           {/*
             **이게 이 화면을 만든 이유입니다.** 하루 일곱 장을 보고 월 규모를
-            짐작하면 틀립니다. 실제로 찍힌 쪽당 문항 수로 환산합니다.
+            짐작하면 틀립니다. 잰 토큰을 그대로 늘립니다 — 맞추는 모형을
+            거치지 않습니다.
           */}
           <div className="mt-3 rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm">
             <p>
               지금 찍히는 대로면 <strong>쪽당 {perPage.toFixed(1)}문항</strong>입니다. 계획한{" "}
               <strong>월 {PLANNED_PAGES_PER_MONTH.toLocaleString()}쪽</strong>이면{" "}
               <strong className="text-rose-700">
-                ${plan.totalUsd.toFixed(0)} · 약 {(krw(plan.totalUsd) / 10_000).toFixed(0)}만원
+                ${plan.totalUsd.toFixed(0)} · 약 {man(plan.totalUsd)}만원
               </strong>
               입니다.
             </p>
             <p className="mt-1 text-xs text-slate-600">
-              사진값 ${plan.pageUsd.toFixed(0)} · 문항값 ${plan.itemUsd.toFixed(0)} (출력이 {(plan.itemShare * 100).toFixed(0)}%)
-              {" — "}
-              사진값은 <strong>해상도</strong>로, 문항값은 <strong>출력 스키마</strong>로 줄입니다.
+              사진 ${plan.image.usd.toFixed(0)} · 그 외 입력 ${plan.otherInput.usd.toFixed(0)} · 출력 $
+              {plan.output.usd.toFixed(0)}
             </p>
+
+            <table className="mt-2 w-full text-xs">
+              <tbody>
+                {levers.map((l) => (
+                  <tr key={l.label} className="border-t border-slate-200">
+                    <td className="py-1 text-slate-600">{l.label}</td>
+                    <td className="py-1 text-right font-medium">월 {man(l.usd)}만원</td>
+                    <td className="py-1 pl-2 text-right text-slate-500">{((l.usd / plan.totalUsd) * 100).toFixed(0)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-1 text-xs text-slate-500">
+              해상도는 <strong>연필이 읽히는지</strong>를 걸고 사는 것입니다. 바꾸기 전에{" "}
+              <a className="underline" href="/bench">모델 비교</a>로 재야 합니다.
+            </p>
+
             {s.sheets < 30 && (
               <p className="mt-1 text-xs text-amber-800">
                 🔶 표본이 {s.sheets}장뿐이라 쪽당 문항 수가 실제와 다를 수 있습니다. 수업이 돌기 시작하면 다시 보십시오.

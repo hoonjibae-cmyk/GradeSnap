@@ -1,88 +1,103 @@
 import { describe, expect, it } from "vitest";
-import { OPUS_LOW, estimate, krw, saving, type Lever } from "../cost";
+import { breakdown, edgeFactor, krw, project, saving, type Measured } from "../cost";
 
-/** 2026-08-10 실측 7장. `기준 = claude-opus-5 · low` */
-const MEASURED = [
-  { name: "김예진", pages: 2, items: 60, usd: 0.247 },
-  { name: "김예지", pages: 1, items: 37, usd: 0.137 },
-  { name: "허민하", pages: 1, items: 10, usd: 0.089 },
-  { name: "김민석", pages: 1, items: 10, usd: 0.087 },
-  { name: "최요인", pages: 1, items: 10, usd: 0.085 },
-  { name: "강이안", pages: 1, items: 10, usd: 0.083 },
-  { name: "한태희", pages: 1, items: 10, usd: 0.088 },
-];
+/**
+ * 2026-08-11 관리 화면 실측 (2026-07-13 ~ 08-11, `claude-opus-5 · low`).
+ *
+ * ```
+ * 13장 · 16쪽 · 364문항 · $2.04
+ * 입력 156,158 · 출력 50,185 · 사진이 입력의 65% (쪽당 6,376토큰)
+ * ```
+ */
+const REAL: Measured = {
+  pages: 16,
+  items: 364,
+  imageTokens: 6_376 * 16,
+  otherInputTokens: 156_158 - 6_376 * 16,
+  outputTokens: 50_185,
+};
 
-describe("실측에 맞는가", () => {
-  it("7장 전부 오차 8% 안", () => {
-    /*
-      이 모형으로 월 200만 원을 말하게 됩니다. 실측에서 벗어나면
-      그 위에 쌓는 판단이 전부 헛것이 됩니다.
-    */
-    for (const m of MEASURED) {
-      const got = estimate({ pages: m.pages, itemsPerPage: m.items / m.pages }).totalUsd;
-      expect(Math.abs(got - m.usd) / m.usd).toBeLessThan(0.08);
-    }
+describe("실측과 맞는가", () => {
+  it("총액이 화면의 $2.04와 같다", () => {
+    expect(breakdown(REAL).totalUsd).toBeCloseTo(2.04, 2);
   });
 
-  it("작은 답안지는 쪽값이, 큰 답안지는 문항값이 지배한다", () => {
-    // 어디를 손댈지가 답안지 크기에 따라 **뒤바뀝니다.**
-    const small = estimate({ pages: 1, itemsPerPage: 10 });
-    const big = estimate({ pages: 1, itemsPerPage: 50 });
-    expect(small.itemShare).toBeLessThan(0.25);
-    expect(big.itemShare).toBeGreaterThan(0.5);
+  it("🔴 출력이 비용의 6할이 넘는다 — 예전 모형은 35%라고 했다", () => {
+    /*
+      답안지 두 장에 맞춘 `쪽당 + 문항당` 모형이 출력을 35%로 봤습니다.
+      실측은 62%입니다. 그 모형 위에서 "다음에 뭘 줄일까"를 정하고 있었고,
+      순위가 뒤바뀌어 있었습니다.
+    */
+    const b = breakdown(REAL);
+    expect(b.output.share).toBeGreaterThan(0.6);
+    expect(b.image.share).toBeLessThan(0.3);
+  });
+
+  it("사진은 비용의 4분의 1 — 입력의 65%지만 입력 자체가 4할이 안 된다", () => {
+    // 여기서 두 숫자를 헷갈리면 해상도의 값어치를 두 배로 잡습니다.
+    const b = breakdown(REAL);
+    expect(b.image.share).toBeCloseTo(0.25, 2);
+    expect(b.image.usd / (b.image.usd + b.otherInput.usd)).toBeCloseTo(0.65, 2);
   });
 });
 
-describe("학원 실제 규모 — 월 12,600쪽", () => {
-  const load = (itemsPerPage: number) => ({ pages: 12_600, itemsPerPage });
+describe("월 12,600쪽으로 늘리면", () => {
+  const M = 12_600;
 
-  it("쪽당 20문항이면 월 1,200달러대", () => {
-    const e = estimate(load(20));
-    expect(e.totalUsd).toBeGreaterThan(1_200);
-    expect(e.totalUsd).toBeLessThan(1_400);
+  it("약 227만원", () => {
+    const p = project(REAL, M);
+    expect(p.totalUsd).toBeGreaterThan(1_550);
+    expect(p.totalUsd).toBeLessThan(1_650);
+    expect(krw(p.totalUsd)).toBeGreaterThan(2_200_000);
   });
 
-  it("쪽당 문항이 늘수록 출력 몫이 커진다 — 스키마를 손댈 값어치도 같이 큰다", () => {
-    expect(estimate(load(10)).itemShare).toBeLessThan(0.25);
-    expect(estimate(load(30)).itemShare).toBeGreaterThan(0.4);
+  it("몫은 쪽수를 늘려도 안 변한다", () => {
+    expect(project(REAL, M).output.share).toBeCloseTo(breakdown(REAL).output.share, 6);
   });
 
-  it("사진 한 장을 덜 찍으면 그것만으로 한 달에 백만 원 단위가 움직인다", () => {
-    // 학생당 4~5쪽에서 한 쪽을 줄이면 월 2,730쪽입니다.
-    const cut = estimate(load(20)).totalUsd - estimate({ pages: 12_600 - 2_730, itemsPerPage: 20 }).totalUsd;
-    expect(krw(cut)).toBeGreaterThan(400_000);
+  it("쪽이 없으면 0 — 나누기 오류를 안 낸다", () => {
+    expect(project({ ...REAL, pages: 0 }, M).totalUsd).toBe(0);
   });
 });
 
-describe("길마다 얼마인가", () => {
-  const load = { pages: 12_600, itemsPerPage: 20 };
+describe("길마다 이 규모에서 얼마인가", () => {
+  const M = 12_600;
+  const man = (usd: number) => Math.round((krw(usd) / 10_000) * 10) / 10;
 
-  const levers: Record<string, Lever> = {
-    // 사진을 반으로 줄이면 입력 토큰이 반. 출력은 안 변합니다.
-    해상도: { name: "이미지 해상도 절반", page: 0.5, item: 1 },
-    // 출력 스키마 압축은 문항 쪽에만 붙습니다.
-    압축: { name: "출력 스키마 압축", page: 1, item: 0.64 },
-    // Batch는 입력·출력 둘 다 반값입니다.
-    배치: { name: "Batch API", page: 0.5, item: 0.5 },
-  };
-
-  it("Batch가 가장 크다 — 두 항에 다 붙기 때문", () => {
-    const b = saving(load, levers.배치);
-    expect(b).toBeGreaterThan(saving(load, levers.해상도));
-    expect(b).toBeGreaterThan(saving(load, levers.압축));
+  it("긴 변 2576→1800이면 월 29만원", () => {
+    // 토큰은 넓이에 붙습니다. 긴 변 0.7배면 사진 토큰은 0.49배입니다.
+    const s = saving(REAL, M, { name: "1800px", image: edgeFactor(2576, 1800) });
+    expect(man(s)).toBeGreaterThan(25);
+    expect(man(s)).toBeLessThan(33);
   });
 
-  it("스키마 압축은 작은 답안지에서 재면 값어치가 작아 보인다", () => {
+  it("긴 변 절반이면 월 43만원 — 사진을 아예 없애도 57만원이 한계", () => {
+    expect(man(saving(REAL, M, { name: "1288px", image: edgeFactor(2576, 1288) }))).toBeGreaterThan(40);
+    // 해상도로 살 수 있는 것의 천장. 이보다 큰 절감은 출력에서만 나옵니다.
+    expect(man(saving(REAL, M, { name: "사진 없음", image: 0 }))).toBeLessThan(60);
+  });
+
+  it("출력 스키마 압축은 실측 7.6% — 월 17만원", () => {
     /*
-      🔴 2026-08-10에 실제로 이렇게 헛짚었습니다. 10문항짜리 다섯 장으로
-      재서 7.7%가 나왔는데, 그건 그 표본이 작아서였습니다.
+      docs/13 §13.21에서 잰 값입니다. 출력이 비용의 62%인데 절감이 7.6%인
+      것은, 압축이 **전사 문항 출력에만** 붙고 머리말·판정 출력은 그대로이기
+      때문입니다. 예측(36%)이 아니라 실측을 씁니다.
     */
-    const tiny = saving({ pages: 12_600, itemsPerPage: 10 }, levers.압축);
-    const real = saving({ pages: 12_600, itemsPerPage: 30 }, levers.압축);
-    expect(real / tiny).toBeGreaterThan(2);
+    const s = project(REAL, M).totalUsd * 0.076;
+    expect(man(s)).toBeGreaterThan(15);
+    expect(man(s)).toBeLessThan(20);
   });
 
-  it("원화로 옮겨도 자릿수가 유지된다", () => {
-    expect(krw(saving(load, levers.배치))).toBeGreaterThan(900_000);
+  it("해상도가 스키마 압축보다 크다 — 순위가 뒤집혔다", () => {
+    const res = saving(REAL, M, { name: "1800px", image: edgeFactor(2576, 1800) });
+    const schema = project(REAL, M).totalUsd * 0.076;
+    expect(res).toBeGreaterThan(schema);
+  });
+});
+
+describe("긴 변과 토큰", () => {
+  it("넓이에 붙는다 — 긴 변 절반은 토큰 4분의 1", () => {
+    expect(edgeFactor(2576, 1288)).toBeCloseTo(0.25, 3);
+    expect(edgeFactor(2576, 2576)).toBe(1);
   });
 });

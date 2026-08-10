@@ -1,91 +1,118 @@
 /**
- * "이 규모면 한 달에 얼마인가."
+ * "이 규모면 한 달에 얼마인가" — **실측 토큰에서만 나옵니다.**
  *
- * 원장님이 비용에 매달리는 이유가 2026-08-10에 드러났습니다.
+ * 이 파일은 두 번 틀렸습니다.
  *
- * ```
- * 주  650명 × 4~5쪽 = 약 3,000쪽
- * 월                  약 12,600쪽
- * ```
+ * 1. 하루 일곱 장을 보고 월 규모를 짐작해 **세 자릿수 배** 틀렸습니다.
+ * 2. 고친 뒤에도 답안지 두 장에 맞춘 `쪽당 + 문항당` 모형을 썼는데,
+ *    그게 **출력 몫을 35%로 말했습니다. 실측은 62%였습니다.**
  *
- * 저는 그때까지 하루 일곱 장을 보고 "월 몇 천 원"이라고 말하고 있었습니다.
- * **두 자릿수 배가 아니라 세 자릿수 배 틀렸습니다.** 그 잘못된 규모 위에서
- * "비용 최적화는 여기서 멈추자"고 권했고, 그건 뒤집었습니다(docs/13 §13.22).
+ * 두 번째가 더 나쁩니다. 화면 한 상자 안에서 실측(62%)과 모형(35%)이
+ * 서로 다른 말을 하고 있었고, 그 모형 위에서 "다음에 뭘 줄일까"를
+ * 정하고 있었습니다.
  *
- * 그래서 규모를 **머릿속이 아니라 코드에** 둡니다. 실측이 바뀌면 여기만
- * 고치고, 화면과 문서가 같은 숫자를 말합니다.
+ * 그래서 맞추는 모형을 버렸습니다. **이제 실제로 쓴 토큰을 그대로 늘립니다.**
  */
 
-/**
- * 비용이 붙는 자리는 둘입니다.
- *
- * | | 무엇 | 왜 여기 붙나 |
- * |---|---|---|
- * | 쪽당 | 사진 + 시스템 프롬프트 **입력** | 문항이 몇 개든 사진 한 장 값은 같습니다 |
- * | 문항당 | 전사·판정 **출력** | 문항마다 JSON 한 덩이씩 뱉습니다 |
- *
- * `쪽수 × 쪽당 + 문항수 × 문항당`. 2026-08-10 실측 7장에 **오차 7% 안**으로
- * 맞습니다(아래 테스트). 답안지 크기가 10문항에서 60문항까지 흩어져 있어
- * 두 항을 가를 수 있었습니다.
- */
-export interface Rate {
-  /** 쪽 하나를 모델에 보내는 값(달러). 사진 크기가 정합니다. */
-  perPage: number;
-  /** 문항 하나가 뱉는 값(달러). 출력 스키마가 정합니다. */
-  perItem: number;
-}
-
-/**
- * `claude-opus-5 · low`, 지금 쓰는 출력 형식.
- *
- * 2026-08-10 7장에 맞춘 값입니다. **모델이나 스키마를 바꾸면 다시 재야
- * 합니다** — 이 두 숫자는 그 조합에만 붙어 있습니다.
- */
-export const OPUS_LOW: Rate = { perPage: 0.0717, perItem: 0.00173 };
-
-export interface Load {
-  /** 한 달에 찍는 쪽 수 */
+/** `sheets.token_usage`에서 그대로 나오는 값. 추정이 하나도 안 들어갑니다. */
+export interface Measured {
   pages: number;
-  /** 쪽당 평균 문항 수 */
-  itemsPerPage: number;
+  items: number;
+  /** 전사 입력 중 사진 몫 (`lib/tokens.ts`의 `imageTokens` × 쪽수) */
+  imageTokens: number;
+  /** 시스템 프롬프트 + 판정 입력 */
+  otherInputTokens: number;
+  outputTokens: number;
 }
 
-export interface Estimate {
-  /** 사진을 보내는 값 — **줄이려면 해상도** */
-  pageUsd: number;
-  /** 문항을 받는 값 — **줄이려면 출력 스키마** */
-  itemUsd: number;
+/** 1M 토큰당 [입력, 출력] 달러. */
+export type Price = [number, number];
+export const OPUS_5: Price = [5, 25];
+
+export interface Part {
+  tokens: number;
+  usd: number;
+  /** 전체 비용에서 차지하는 몫 */
+  share: number;
+}
+
+export interface Breakdown {
+  /** **해상도**로 줄이는 몫 */
+  image: Part;
+  /** 프롬프트·판정 입력. 줄일 손잡이가 마땅치 않습니다 */
+  otherInput: Part;
+  /** **출력 스키마**로 줄이는 몫. 문항 수에 비례합니다 */
+  output: Part;
   totalUsd: number;
-  /** 출력이 차지하는 몫. 어디를 손대야 하는지 알려줍니다. */
-  itemShare: number;
 }
 
-export function estimate(load: Load, rate: Rate = OPUS_LOW): Estimate {
-  const pageUsd = load.pages * rate.perPage;
-  const itemUsd = load.pages * load.itemsPerPage * rate.perItem;
-  const totalUsd = pageUsd + itemUsd;
-  return { pageUsd, itemUsd, totalUsd, itemShare: totalUsd ? itemUsd / totalUsd : 0 };
+export function breakdown(m: Measured, price: Price = OPUS_5): Breakdown {
+  const [pin, pout] = price;
+  const image = (m.imageTokens * pin) / 1e6;
+  const otherInput = (m.otherInputTokens * pin) / 1e6;
+  const output = (m.outputTokens * pout) / 1e6;
+  const totalUsd = image + otherInput + output;
+  const part = (tokens: number, usd: number): Part => ({ tokens, usd, share: totalUsd ? usd / totalUsd : 0 });
+  return {
+    image: part(m.imageTokens, image),
+    otherInput: part(m.otherInputTokens, otherInput),
+    output: part(m.outputTokens, output),
+    totalUsd,
+  };
 }
 
 /**
- * 아끼는 길마다 **이 규모에서** 한 달에 얼마인가.
+ * 잰 것을 목표 쪽수로 늘립니다.
  *
- * 같은 비율이라도 붙는 자리가 다르면 금액이 다릅니다. 이걸 안 보고
- * "7% 절감"만 말하면 큰 것과 작은 것이 같아 보입니다.
+ * **쪽당 문항 수가 지금과 같다고 봅니다.** 시험지 유형마다 다르므로
+ * 표본이 실제 수업과 안 닮으면 이 값도 안 맞습니다 — 화면이 표본 수를
+ * 같이 보여주는 이유입니다.
+ */
+export function project(m: Measured, targetPages: number, price: Price = OPUS_5): Breakdown {
+  if (m.pages <= 0) return breakdown({ ...m, pages: 0, items: 0, imageTokens: 0, otherInputTokens: 0, outputTokens: 0 }, price);
+  const k = targetPages / m.pages;
+  return breakdown(
+    {
+      pages: targetPages,
+      items: m.items * k,
+      imageTokens: m.imageTokens * k,
+      otherInputTokens: m.otherInputTokens * k,
+      outputTokens: m.outputTokens * k,
+    },
+    price,
+  );
+}
+
+/**
+ * 아끼는 길 하나가 **이 규모에서** 얼마인가.
+ *
+ * 붙는 자리가 다르면 같은 비율도 금액이 다릅니다. 비율만 말하면
+ * 큰 것과 작은 것이 같아 보입니다 — 실제로 그렇게 헛짚었습니다.
  */
 export interface Lever {
   name: string;
-  /** 쪽당 값이 몇 배가 되나. 1이면 안 건드림. */
-  page: number;
-  /** 문항당 값이 몇 배가 되나. */
-  item: number;
+  /** 사진 토큰이 몇 배가 되나. 긴 변을 `r`배로 줄이면 `r²`입니다. */
+  image?: number;
+  /** 출력 토큰이 몇 배가 되나. */
+  output?: number;
 }
 
-export function saving(load: Load, lever: Lever, rate: Rate = OPUS_LOW): number {
-  const base = estimate(load, rate).totalUsd;
-  const after = estimate(load, { perPage: rate.perPage * lever.page, perItem: rate.perItem * lever.item }).totalUsd;
-  return base - after;
+export function saving(m: Measured, targetPages: number, lever: Lever, price: Price = OPUS_5): number {
+  const base = project(m, targetPages, price);
+  const after = project(
+    {
+      ...m,
+      imageTokens: m.imageTokens * (lever.image ?? 1),
+      outputTokens: m.outputTokens * (lever.output ?? 1),
+    },
+    targetPages,
+    price,
+  );
+  return base.totalUsd - after.totalUsd;
 }
+
+/** 긴 변을 이 픽셀로 줄이면 사진 토큰이 몇 배인가. 토큰은 **넓이**에 붙습니다. */
+export const edgeFactor = (from: number, to: number): number => (to / from) ** 2;
 
 /** 감을 잡기 위한 환산. 정확한 청구액이 아닙니다. */
 export const KRW_PER_USD = 1415;
