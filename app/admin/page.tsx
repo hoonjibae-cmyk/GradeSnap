@@ -7,6 +7,7 @@ import {
   allStaff,
   getSettings,
   gradedBetween,
+  pagesFor,
   retentionStatus,
   saveGradingModel,
   saveSettings,
@@ -17,7 +18,7 @@ import {
 import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
 import { FIXED_INPUT_PER_PAGE, imageTokens, split } from "@/lib/tokens";
 import { breakdown, edgeFactor, krw, project, saving } from "@/lib/cost";
-import type { Role, SettingsRow, SheetRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
+import type { Role, SettingsRow, SheetPageRow, SheetRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
 import {
   byHour,
   byStaff,
@@ -225,9 +226,12 @@ function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => voi
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(daysAgo(0));
   const [sheets, setSheets] = useState<SheetRow[] | null>(null);
+  const [pages, setPages] = useState<SheetPageRow[]>([]);
 
   const load = useCallback(async () => {
-    setSheets(await gradedBetween(db, from, to));
+    const rows = await gradedBetween(db, from, to);
+    setSheets(rows);
+    setPages(await pagesFor(db, rows.map((r) => r.id)));
   }, [db, from, to]);
 
   useEffect(() => {
@@ -240,7 +244,20 @@ function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => voi
   const items = sheets.reduce((a, x) => a + (x.transcript?.items.length ?? 0), 0);
   const spent = sheets.reduce((a, x) => a + Number(x.cost_usd ?? 0), 0);
   const inTok = s.transcribe.inputTokens + s.judge.inputTokens;
+  /*
+    🔴 **어림값입니다.** 시스템 프롬프트를 750토큰으로 치고 뺀 값이라,
+    실제보다 사진을 크게 잡습니다. 2026-08-11 `/bench` A/B에서 이 값이
+    65%라고 했는데 실제는 23%였습니다(docs/13 §13.26).
+
+    아래 '저장된 사진 크기'가 훨씬 곧은 답입니다 — 픽셀을 750으로 나누면
+    사진 토큰이고, 그건 추정이 안 들어갑니다.
+  */
   const imgPerPage = imageTokens(s, FIXED_INPUT_PER_PAGE);
+  /** 저장된 사진의 긴 변. **여기가 사실입니다.** */
+  const edges = pages.map((p) => Math.max(p.width ?? 0, p.height ?? 0)).filter((n) => n > 0).sort((a, b) => a - b);
+  const medianEdge = edges.length ? edges[Math.floor(edges.length / 2)] : null;
+  const px = pages.map((p) => (p.width ?? 0) * (p.height ?? 0)).filter((n) => n > 0);
+  const avgImgTokens = px.length ? px.reduce((a, n) => a + n, 0) / px.length / 750 : null;
   /*
     🔴 여기서 **재는 것만** 씁니다.
 
@@ -283,9 +300,9 @@ function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => voi
             <Stat label="채점한 답안지" value={`${s.sheets}장`} sub={`${s.pages}쪽 · ${items}문항`} />
             <Stat label="쓴 돈" value={`$${spent.toFixed(2)}`} sub={`장당 $${(spent / s.sheets).toFixed(3)}`} />
             <Stat
-              label="사진이 비용에서"
-              value={`${(now.image.share * 100).toFixed(0)}%`}
-              sub={`쪽당 약 ${Math.round(imgPerPage).toLocaleString()}토큰`}
+              label="저장된 사진"
+              value={medianEdge ? `${medianEdge}px` : "—"}
+              sub={avgImgTokens ? `쪽당 약 ${Math.round(avgImgTokens).toLocaleString()}토큰 (넓이÷750)` : "크기 기록 없음"}
             />
             <Stat
               label="출력이 비용에서"

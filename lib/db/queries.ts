@@ -402,6 +402,21 @@ export async function pagesOf(db: SupabaseClient, sheetId: string): Promise<Shee
   ) as SheetPageRow[];
 }
 
+/**
+ * 여러 답안지의 사진 기록. **크기를 보려고 씁니다.**
+ *
+ * 2026-08-11에 사진이 입력의 65%인 줄 알고 해상도를 줄여봤는데 23%였습니다.
+ * 그 65%는 제가 시스템 프롬프트를 750토큰으로 어림잡아 뺀 값이었습니다.
+ * **저장된 사진의 실제 크기는 여기 이미 있었습니다.**
+ */
+export async function pagesFor(db: SupabaseClient, sheetIds: string[]): Promise<SheetPageRow[]> {
+  if (!sheetIds.length) return [];
+  return ok(
+    await db.from("sheet_pages").select("*").in("sheet_id", sheetIds).is("purged_at", null),
+    "사진 기록",
+  ) as SheetPageRow[];
+}
+
 /** 스토리지에서 내려받아 base64로. 모델에 보낼 모양 그대로입니다. */
 export async function downloadPage(db: SupabaseClient, path: string): Promise<string> {
   const res = await db.storage.from(BUCKET).download(path);
