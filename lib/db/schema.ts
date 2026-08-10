@@ -38,6 +38,9 @@ export interface StaffRow {
 export interface SettingsRow {
   id: boolean;
   work_hours: ({ start: number; end: number } | null)[];
+  /** 실제 채점에 쓰는 모델. **관리 화면에서 바꿉니다** — 환경 변수가 아닙니다. */
+  grading_model: string;
+  grading_effort: string;
   updated_at: string;
 }
 

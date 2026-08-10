@@ -5,7 +5,7 @@ import { compare } from "@/lib/grading/compare";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import { bearer, userClient } from "@/lib/db/client";
-import { me, recordUsage } from "@/lib/db/queries";
+import { gradingOptions, me, recordUsage } from "@/lib/db/queries";
 import type { JudgeResult, Transcript, Usage, Warning } from "@/lib/grading/types";
 
 export const runtime = "nodejs";
@@ -79,13 +79,16 @@ export async function POST(req: Request) {
 
   try {
     const client = anthropic();
+    // 빠른 시험도 **실제 채점과 같은 설정**을 씁니다. 다르면 여기서 본 결과가
+    // 실제 채점의 예고가 못 됩니다.
+    const opts = await gradingOptions(db);
 
     // 장마다 따로 전사합니다. 한 요청에 여러 장을 담아도 **모델 호출은 장당 하나**라야
     // Vercel의 300초 안에 들어옵니다.
     const parts = [];
     const usage = [];
     for (const im of images) {
-      const r = await transcribe(client, { mediaType: im.mediaType ?? "image/jpeg", data: im.data });
+      const r = await transcribe(client, { mediaType: im.mediaType ?? "image/jpeg", data: im.data }, opts);
       parts.push(r.transcript);
       usage.push(r.usage);
     }
@@ -96,7 +99,7 @@ export async function POST(req: Request) {
     const missing = missingCount(transcript);
 
     // 전사와 판정을 **따로** 부릅니다. 한 번에 시키면 틀린 답을 정답으로 고쳐 읽습니다.
-    const { results, usage: u2 } = await judge(client, transcript, body.strictSpelling ?? false);
+    const { results, usage: u2 } = await judge(client, transcript, body.strictSpelling ?? false, opts);
     usage.push(u2);
     const cost = costUsd(usage, usage[0].model);
     // 판정은 대조 로직에 맡깁니다 — 화면과 서버가 다른 규칙을 쓰면 언젠가 어긋납니다.

@@ -5,7 +5,7 @@ import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
 import { bearer, userClient } from "@/lib/db/client";
-import { claim, downloadPage, pagesOf, recordUsage, saveFailure, saveGrading } from "@/lib/db/queries";
+import { claim, downloadPage, gradingOptions, pagesOf, recordUsage, saveFailure, saveGrading } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -55,6 +55,8 @@ export async function POST(req: Request) {
   const id = sheet.id;
   try {
     const client = anthropic();
+    // 어떤 모델로 채점할지는 **관리 화면의 설정**입니다. 환경 변수가 아닙니다.
+    const opts = await gradingOptions(db);
     const pages = await pagesOf(db, id);
     if (!pages.length) throw new Error("사진이 없습니다. 다시 접수해 주십시오.");
 
@@ -62,7 +64,7 @@ export async function POST(req: Request) {
     const usage = [];
     for (const p of pages) {
       const data = await downloadPage(db, p.storage_path);
-      const r = await transcribe(client, { mediaType: "image/jpeg", data });
+      const r = await transcribe(client, { mediaType: "image/jpeg", data }, opts);
       parts.push(r.transcript);
       usage.push(r.usage);
     }
@@ -74,7 +76,7 @@ export async function POST(req: Request) {
     const warnings = checkDrift(transcript, undefined, pages.length);
     const missing = missingCount(transcript);
 
-    const { results, usage: u2 } = await judge(client, transcript, sheet.strict_spelling);
+    const { results, usage: u2 } = await judge(client, transcript, sheet.strict_spelling, opts);
     usage.push(u2);
     const cost = costUsd(usage, usage[0].model);
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);

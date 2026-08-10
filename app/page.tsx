@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, Gate } from "@/components/Gate";
-import { deleteSheet, intake, retrySheet, sheetsOn } from "@/lib/db/queries";
+import { deleteSheet, getSettings, intake, retrySheet, sheetsOn } from "@/lib/db/queries";
 import { needsReview, type SheetRow, type StaffRow } from "@/lib/db/schema";
 import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
 import { pushRecent } from "@/lib/recent";
+import { describeGrading } from "@/lib/grading/provider";
 
 /**
  * 접수 화면 — 조교가 하루 종일 열어두는 곳입니다.
@@ -36,6 +37,8 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   const [err, setErr] = useState<string | null>(null);
   const active = useRef(0);
   const [busyLanes, setBusyLanes] = useState(0);
+  /** 지금 실제 채점이 쓰는 설정. 못 읽으면 null — 화면이 지어내지 않습니다. */
+  const [grading, setGrading] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const rows = await sheetsOn(db, day);
@@ -100,6 +103,13 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       .catch((e) => setErr(String(e.message ?? e)));
   }, [refresh, ensureLanes]);
 
+  // 설정은 자주 안 바뀝니다. 5초마다 같이 읽을 이유가 없습니다.
+  useEffect(() => {
+    void getSettings(db)
+      .then((c) => setGrading(describeGrading(c.grading_model, c.grading_effort)))
+      .catch(() => setGrading(null));
+  }, [db]);
+
   // 5초마다 봅니다. 조교 둘이 같은 화면을 보므로 남이 넣은 것도 여기서 나타납니다.
   useEffect(() => {
     const t = setInterval(() => void refresh().then(ensureLanes).catch(() => {}), 5000);
@@ -148,6 +158,20 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             {busyLanes > 0 && <span className="mr-2 text-slate-700">채점 중 {busyLanes}</span>}${cost.toFixed(2)}
           </span>
         </div>
+
+        {/*
+          **지금 무엇으로 채점되는지 조교도 알아야 합니다.**
+
+          예전에는 서버 환경 변수라 화면이 말할 수가 없었습니다. 그래서
+          "요즘 결과가 좀 이상한데" 같은 얘기가 나와도 무엇이 바뀌었는지
+          짚을 데가 없었습니다. 못 읽으면 **비워 둡니다** — 기본값을 적어두면
+          실제로 도는 것과 다른 이름이 걸릴 수 있습니다.
+        */}
+        {grading && (
+          <p className="mb-2 text-xs text-slate-500">
+            채점 모델 <strong className="font-medium text-slate-600">{grading}</strong>
+          </p>
+        )}
 
         {review > 0 && (
           <p className="mb-3 rounded-lg border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900">

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { CATALOG, costUsd, ids, info, knownPrice } from "@/lib/grading/provider";
+import { describe, expect, it } from "vitest";
+import { CATALOG, costUsd, ids, info, knownPrice, normalizeGrading } from "@/lib/grading/provider";
 import type { Usage } from "@/lib/grading/types";
 
 const use = (input: number, output: number): Usage => ({
@@ -69,35 +69,36 @@ describe("비용", () => {
   });
 });
 
-describe("실제 채점에 쓸 모델", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
+describe("실제 채점에 쓸 설정", () => {
+  it("아는 Anthropic 모델과 아는 강도는 통과한다", () => {
+    expect(normalizeGrading("claude-opus-5", "low")).toEqual({ model: "claude-opus-5", effort: "low" });
+    expect(normalizeGrading("claude-sonnet-5", "high")).toEqual({ model: "claude-sonnet-5", effort: "high" });
   });
 
-  const load = async () => {
-    vi.resetModules();
-    return (await import("@/lib/grading/client")) as typeof import("@/lib/grading/client");
-  };
-
-  it("환경 변수로 Anthropic 모델끼리는 바꿀 수 있다", async () => {
-    vi.stubEnv("GRADING_MODEL", "claude-sonnet-5");
-    expect((await load()).DEFAULT_MODEL).toBe("claude-sonnet-5");
-  });
-
-  it("GPT로는 못 바꾼다 — 동의서에 없는 회사로 답안지가 나간다", async () => {
+  it("🔴 GPT는 통과 못 한다 — 동의서에 없는 회사로 답안지가 나간다", () => {
     /*
-      🔴 이건 취향이 아니라 선입니다. 동의서(docs/14 §14.3)에 적힌 국외 이전
-      대상은 Anthropic PBC 하나입니다. 환경 변수 한 줄로 실제 채점이 OpenAI로
-      넘어가면 동의 없이 학생 답안지가 나갑니다. 회사를 바꾸려면 동의서를
-      고치고 동의를 다시 받은 뒤 CATALOG 쪽을 손대야 합니다.
+      취향이 아니라 선입니다. 동의서(docs/14 §14.8)에 적힌 국외 이전 대상은
+      Anthropic PBC 하나입니다. 실제 채점이 OpenAI로 넘어가면 동의 없이
+      학생 답안지가 나갑니다. DB의 CHECK와 여기서 **둘 다** 막습니다 —
+      한 겹이 뚫려도 나머지가 남게.
     */
-    vi.stubEnv("GRADING_MODEL", "gpt-5");
-    await expect(load()).rejects.toThrow(/GRADING_MODEL/);
+    expect(normalizeGrading("gpt-5.6-terra", "low")).toBeNull();
+    expect(normalizeGrading("gpt-5.6-luna", "high")).toBeNull();
   });
 
-  it("오타는 조용히 넘어가지 않는다", async () => {
-    vi.stubEnv("GRADING_MODEL", "claude-opus-6");
-    await expect(load()).rejects.toThrow();
+  it("모르는 모델·강도는 통과 못 한다", () => {
+    expect(normalizeGrading("claude-opus-6", "low")).toBeNull();
+    expect(normalizeGrading("claude-opus-5", "빠르게")).toBeNull();
+  });
+
+  it("칸이 없으면 null — 기본값으로 슬쩍 메우지 않는다", () => {
+    /*
+      마이그레이션 전에 배포가 먼저 붙으면 이 값이 undefined입니다. 그때
+      기본값을 채우면 화면은 "Opus 5"라고 말하는데 실제로는 다른 것이 돌 수
+      있습니다. 조교에게 무엇으로 채점됐는지 보여주려고 만든 값이라
+      추측하면 안 됩니다.
+    */
+    expect(normalizeGrading(undefined, undefined)).toBeNull();
+    expect(normalizeGrading(null, "low")).toBeNull();
   });
 });

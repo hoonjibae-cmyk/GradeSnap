@@ -73,7 +73,7 @@ export const CATALOG: ModelInfo[] = [
     id: "claude-opus-5",
     label: "Opus 5",
     provider: "anthropic",
-    note: "지금 쓰는 모델. 입력 5 / 출력 25",
+    note: "입력 5 / 출력 25 — 기준",
     price: [5.0, 25.0],
   },
   {
@@ -93,8 +93,8 @@ export const CATALOG: ModelInfo[] = [
   /*
     GPT는 **실험용으로만** 열어둡니다. 실제 채점을 이쪽으로 돌리려면
     개인정보 동의서를 먼저 고쳐야 합니다 — 지금 동의서에 적힌 국외 이전
-    대상은 Anthropic PBC 하나뿐입니다(docs/14 §14.3). `client.ts`의
-    `DEFAULT_MODEL`이 Anthropic 모델만 받는 이유입니다.
+    대상은 Anthropic PBC 하나뿐입니다(docs/14 §14.8). 실제 채점 설정이
+    `normalizeGrading()`에서 Anthropic만 받는 이유입니다.
   */
   {
     id: "gpt-5.6-sol",
@@ -139,7 +139,45 @@ export const CATALOG: ModelInfo[] = [
                        실시간이 아니면 값이 없는 화면입니다.
 */
 
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
 export const info = (model: string): ModelInfo | undefined => CATALOG.find((m) => m.id === model);
+
+/** 화면에 쓸 이름. 모르는 값이면 있는 그대로 — 지어내지 않습니다. */
+export const label = (model: string): string => info(model)?.label ?? model;
+
+/**
+ * 사람이 읽는 한 줄: `Opus 5 · low`.
+ *
+ * **모양이 아니면 `null`입니다.** 조교 화면에 "지금 이걸로 채점됩니다"라고
+ * 적는 문구라, 못 읽었을 때 기본값을 적으면 실제로 도는 것과 다른 이름이
+ * 걸립니다.
+ */
+export function describeGrading(model: unknown, effort: unknown): string | null {
+  const g = normalizeGrading(model, effort);
+  return g && `${label(g.model)} · ${g.effort}`;
+}
+
+/**
+ * DB에 저장된 채점 설정을 믿을 수 있는 모양으로.
+ *
+ * **모양이 아니면 `null`입니다.** 기본값으로 슬쩍 메우면 화면은 "Opus 5"라고
+ * 말하는데 실제로는 다른 것이 돌 수 있고, 그건 조용히 틀리는 종류입니다.
+ * 마이그레이션 전에 배포가 먼저 붙으면 실제로 값이 `undefined`가 됩니다.
+ *
+ * 🔴 **Anthropic 모델만 통과시킵니다.** 실제 채점이 동의서에 없는 회사로
+ * 나가면 안 됩니다(docs/14 §14.8). DB의 CHECK와 **둘 다** 막습니다 —
+ * 한 겹이 뚫려도 나머지가 남게.
+ */
+export function normalizeGrading(model: unknown, effort: unknown): { model: string; effort: Effort } | null {
+  if (typeof model !== "string" || typeof effort !== "string") return null;
+  const m = info(model);
+  if (!m || m.provider !== "anthropic") return null;
+  if (!(EFFORTS as readonly string[]).includes(effort)) return null;
+  return { model, effort: effort as Effort };
+}
+
+export type Effort = (typeof EFFORTS)[number];
 
 export const ids = (provider?: Provider): string[] =>
   CATALOG.filter((m) => !provider || m.provider === provider).map((m) => m.id);

@@ -14,8 +14,12 @@ migrations/20260808000400_fix_staff_recursion.sql  -- 직원 정책 무한 재�
 migrations/20260808000500_unconfirm.sql         -- 확정 취소 시 기록도 지움
 migrations/20260808000600_model_trials.sql      -- 모델 비교 실험 기록
 migrations/20260808000700_users_usage.sql       -- 직원 켜고 끄기 · 근무 시간 · 사용 기록
-migrations/20260809000100_work_hours.sql       -- 근무 시간을 요일별로
+migrations/20260809000100_work_hours.sql        -- 근무 시간을 요일별로
+migrations/20260810000100_grading_model.sql     -- 채점 모델을 관리 화면에서 고름
 ```
+
+마지막 것을 안 돌리면 **채점이 멈춥니다.** 모르는 설정으로 돈을 쓰지 않으려고
+일부러 그렇게 두었습니다(docs/13 §13.20). 관리 화면이 무엇이 빠졌는지 알려줍니다.
 
 CLI를 쓴다면 `supabase db push`도 같은 일을 합니다.
 

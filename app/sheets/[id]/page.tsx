@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/queries";
 import type { ItemRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import type { Verdict } from "@/lib/grading/types";
+import { label } from "@/lib/grading/provider";
 
 /**
  * 검수 화면 — **선생님이 확인하고 확정하는 곳**입니다.
@@ -253,6 +254,18 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
           <span className="text-xs text-slate-500">
             ${Number(sheet.cost_usd ?? 0).toFixed(3)}
             {sheet.token_usage && ` · ${(sheet.token_usage.reduce((a, u) => a + u.latencyMs, 0) / 1000).toFixed(0)}초`}
+            {/*
+              **이 장을 실제로 채점한 모델**입니다. 지금 설정이 아니라 그때
+              설정이라야 합니다 — 모델을 바꾼 뒤 옛 답안지를 열었을 때
+              "왜 이 판정이 나왔나"를 되짚는 자리이기 때문입니다.
+            */}
+            {sheet.token_usage?.[0]?.model && (
+              <span title="이 답안지를 채점한 모델">
+                {" · "}
+                {label(sheet.token_usage[0].model)}
+                {sheet.token_usage[0].effort && ` · ${sheet.token_usage[0].effort}`}
+              </span>
+            )}
           </span>
         </div>
       </header>

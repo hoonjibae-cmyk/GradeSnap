@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
+import { normalizeGrading, type Effort } from "@/lib/grading/provider";
 import {
   keepName,
   toItemRows,
@@ -63,6 +64,42 @@ export async function updateStaff(
 
 export async function getSettings(db: SupabaseClient): Promise<SettingsRow> {
   return ok(await db.from("settings").select("*").eq("id", true).single(), "설정") as SettingsRow;
+}
+
+/**
+ * 실제 채점이 쓸 설정. **여기가 유일한 출처입니다.**
+ *
+ * 예전에는 `GRADING_MODEL` 환경 변수였습니다. 옮긴 이유 둘:
+ *
+ *   1. 되돌리려면 Vercel에 들어가 재배포해야 했습니다. 원장님이 직접 못
+ *      바꾸면 "되돌릴 수 있다"가 아닙니다.
+ *   2. 환경 변수는 서버만 알아서 **조교 화면이 지금 무엇으로 채점되는지
+ *      말할 수가 없었습니다.**
+ *
+ * 못 읽거나 모양이 아니면 **던집니다.** 엉뚱한 모델에 돈이 나가는 것보다
+ * 채점이 멈추는 편이 낫습니다 — 멈추면 보이고, 틀리게 도는 것은 안 보입니다.
+ */
+export async function gradingOptions(db: SupabaseClient): Promise<{ model: string; effort: Effort }> {
+  const s = await getSettings(db);
+  const g = normalizeGrading(s.grading_model, s.grading_effort);
+  if (!g) {
+    throw new Error(
+      `채점 설정을 읽지 못했습니다 (모델 ${String(s.grading_model)} · 강도 ${String(s.grading_effort)}). ` +
+        "관리 화면에서 다시 고르거나, 마이그레이션이 밀려 있는지 확인해 주십시오.",
+    );
+  }
+  return g;
+}
+
+/** 관리자가 채점 모델을 바꿉니다. **다음 답안지부터 적용됩니다.** */
+export async function saveGradingModel(db: SupabaseClient, model: string, effort: string): Promise<void> {
+  const g = normalizeGrading(model, effort);
+  if (!g) throw new Error(`쓸 수 없는 조합입니다: ${model} · ${effort}`);
+  const res = await db
+    .from("settings")
+    .update({ grading_model: g.model, grading_effort: g.effort, updated_at: new Date().toISOString() })
+    .eq("id", true);
+  if (res.error) throw new Error(`채점 모델 저장: ${res.error.message}`);
 }
 
 export async function saveSettings(db: SupabaseClient, workHours: SettingsRow["work_hours"]): Promise<void> {

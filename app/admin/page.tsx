@@ -7,11 +7,13 @@ import {
   allStaff,
   getSettings,
   retentionStatus,
+  saveGradingModel,
   saveSettings,
   updateStaff,
   usageBetween,
   type RetentionStatus,
 } from "@/lib/db/queries";
+import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
 import type { Role, SettingsRow, StaffRow, UsageEventRow } from "@/lib/db/schema";
 import {
   byHour,
@@ -60,10 +62,144 @@ function Admin({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       <Bar db={db} staff={staff} />
       <h1 className="mb-4 text-xl font-bold">관리</h1>
       {err && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{err}</p>}
+      <Grading db={db} onError={setErr} />
       <Usage db={db} onError={setErr} />
       <People db={db} meId={staff.id} onError={setErr} />
       <Retention db={db} onError={setErr} />
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 채점 모델
+// ---------------------------------------------------------------------------
+
+/**
+ * 실제 채점이 쓸 모델을 원장님이 고릅니다.
+ *
+ * 예전에는 Vercel 환경 변수였습니다. "되돌릴 수 있게" 코드 밖에 뒀는데,
+ * 되돌리려면 여전히 저를 불러야 했습니다. **원장님이 직접 못 바꾸면
+ * 되돌릴 수 있는 게 아닙니다.**
+ *
+ * 🔴 목록에 GPT가 없는 것은 빠뜨린 게 아닙니다. 실제 채점이 OpenAI로 나가면
+ * 동의서에 없는 회사로 학생 답안지가 갑니다(docs/14 §14.8). 모델 비교
+ * 실험(`/bench`)에서만 고를 수 있습니다.
+ */
+function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => void }) {
+  const [cfg, setCfg] = useState<SettingsRow | null>(null);
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const load = useCallback(async () => {
+    const c = await getSettings(db);
+    setCfg(c);
+    setModel(c.grading_model ?? "");
+    setEffort(c.grading_effort ?? "");
+  }, [db]);
+
+  useEffect(() => {
+    void load().catch((e) => onError(String(e.message ?? e)));
+  }, [load, onError]);
+
+  if (!cfg) return <section className="mb-6 text-sm text-slate-500">불러오는 중…</section>;
+
+  const current = normalizeGrading(cfg.grading_model, cfg.grading_effort);
+  const chosen = normalizeGrading(model, effort);
+  const dirty = Boolean(chosen) && (model !== cfg.grading_model || effort !== cfg.grading_effort);
+
+  async function save() {
+    setBusy(true);
+    setSaved(false);
+    try {
+      await saveGradingModel(db, model, effort);
+      await load();
+      setSaved(true);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-bold text-slate-700">채점 모델</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        지금 접수되는 답안지가 어떤 모델로 채점되는지입니다. <strong>바꾸면 다음 답안지부터</strong> 적용되고,
+        이미 채점된 것은 그대로 있습니다.
+      </p>
+
+      {/*
+        칸이 없을 수 있습니다 — 마이그레이션 전에 배포가 먼저 붙는 경우입니다.
+        그때 화면이 기본값을 보여주면 **실제로 도는 것과 다른 이름**을 말하게 됩니다.
+      */}
+      {!current && (
+        <p className="mt-2 rounded border border-rose-300 bg-rose-50 p-2 text-xs text-rose-900">
+          🔴 <strong>지금 설정을 읽지 못했습니다.</strong> 저장된 값이 &ldquo;{String(cfg.grading_model)} ·{" "}
+          {String(cfg.grading_effort)}&rdquo;입니다. 마이그레이션(<code>20260810000100_grading_model.sql</code>)이
+          밀려 있으면 이렇게 됩니다. 이 상태에서는 <strong>채점도 멈춥니다</strong> — 모르는 설정으로 돈을
+          쓰지 않습니다.
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="block text-slate-700">모델</span>
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="mt-1 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+          >
+            {!current && <option value="">(못 읽음)</option>}
+            {CATALOG.filter((m) => m.provider === "anthropic").map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="block text-slate-700">사고 강도</span>
+          <select
+            value={effort}
+            onChange={(e) => setEffort(e.target.value)}
+            className="mt-1 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+          >
+            {!current && <option value="">(못 읽음)</option>}
+            {EFFORTS.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          onClick={() => void save()}
+          disabled={busy || !dirty}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          {busy ? "저장 중…" : "바꾸기"}
+        </button>
+        {saved && !dirty && <span className="text-xs text-emerald-700">저장했습니다.</span>}
+      </div>
+
+      <p className="mt-2 text-xs text-slate-500">
+        {CATALOG.find((m) => m.id === model)?.note}
+        {" · "}강도는 <strong>판정 단계만</strong> 건드립니다 — 전사(글자 읽기)는 안 변합니다.
+      </p>
+
+      {dirty && (
+        <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          🔶 <strong>바꾸기 전에 재보십시오.</strong> {label(cfg.grading_model)} · {cfg.grading_effort}에서{" "}
+          {label(model)} · {effort}로 옮기는 것입니다. <a className="underline" href="/bench">모델 비교</a>에서
+          같은 답안지로 돌려보면 판정이 갈리는지 먼저 보입니다.
+          <br />
+          특히 <strong>FAIL이 섞인 날</strong>로 재야 합니다. 통과한 답안지만 있으면 관대한 모델도 100%가 나옵니다.
+        </p>
+      )}
+    </section>
   );
 }
 
