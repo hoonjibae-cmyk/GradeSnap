@@ -7,6 +7,7 @@ import { getSettings, itemsFor, sheetsOn, trialsOn } from "@/lib/db/queries";
 import type { ItemRow, ModelTrialRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
 import { CATALOG, info } from "@/lib/grading/provider";
+import { markHidden, oddChars } from "@/lib/invisible";
 
 /**
  * 값싼 모델로 바꾸면 무엇을 잃는가 — 실측하는 화면.
@@ -554,12 +555,27 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                       <details>
                         <summary className="cursor-pointer">{d.written.length}칸</summary>
                         <ul className="mt-1 space-y-0.5">
-                          {d.written.slice(0, 20).map((w) => (
-                            <li key={w.no}>
-                              {w.no}. <span className="text-slate-500">{w.base || "(빈칸)"}</span> →{" "}
-                              <span className="font-medium">{w.trial || "(빈칸)"}</span>
-                            </li>
-                          ))}
+                          {d.written.slice(0, 20).map((w) => {
+                            /*
+                              🔴 **같아 보이는 짝이 실제로 떴습니다**(2026-08-10,
+                              `frequent → frequent`). 화면이 "다르다"고만 하고
+                              어디가 다른지 못 보여주면 그 줄은 없는 것만 못합니다 —
+                              원장님이 화면을 못 믿게 되고, 그러면 진짜 고쳐 읽기가
+                              있는 줄까지 같이 흘려보냅니다.
+                            */
+                            const odd = [w.base, w.trial].map(oddChars).filter(Boolean);
+                            return (
+                              <li key={w.no}>
+                                {w.no}. <span className="text-slate-500">{markHidden(w.base) || "(빈칸)"}</span> →{" "}
+                                <span className="font-medium">{markHidden(w.trial) || "(빈칸)"}</span>
+                                {odd.length > 0 && (
+                                  <span className="ml-1 text-amber-700" title="글자 모양은 같지만 다른 문자입니다">
+                                    (예상 밖 문자: {[...new Set(odd)].join(" / ")})
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </details>
                     )}
