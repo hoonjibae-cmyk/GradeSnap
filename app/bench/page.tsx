@@ -9,6 +9,7 @@ import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench
 import { CATALOG, info } from "@/lib/grading/provider";
 import { markHidden, oddChars } from "@/lib/invisible";
 import { compare } from "@/lib/grading/compare";
+import { EDGES, STORED_EDGE, tokenFactor } from "@/lib/grading/resize";
 
 /**
  * 값싼 모델로 바꾸면 무엇을 잃는가 — 실측하는 화면.
@@ -40,6 +41,22 @@ const VARIANTS = [
     note: "🔴 2026-08-10 실측에서 판정이 관대해졌습니다(6:0). 기록용으로만 남겨둡니다",
   },
 ];
+/**
+ * 사진 긴 변. `null`이 저장된 그대로입니다.
+ *
+ * 사진이 비용의 25%이고 보낸 그대로 청구됩니다(docs/13 §13.24). 토큰은
+ * **넓이**에 붙으므로 긴 변만 줄여도 크게 떨어집니다 — 다만 `MAX_EDGE`를
+ * 2576으로 잡은 이유가 답안 한 칸을 40~80px로 남기려는 것이었습니다.
+ * **연필이 안 읽히기 시작하는 지점을 찾는 실험입니다.**
+ */
+const EDGE_OPTIONS: { id: number | null; label: string }[] = [
+  { id: null, label: "원본 (2576)" },
+  ...EDGES.filter((e) => e !== STORED_EDGE).map((e) => ({
+    id: e as number | null,
+    label: `${e}px — 사진값 ${Math.round(tokenFactor(STORED_EDGE, e) * 100)}%`,
+  })),
+];
+
 /** 실험은 급하지 않습니다. 실제 채점이 밀리지 않게 둘만 씁니다. */
 const LANES = 2;
 
@@ -56,6 +73,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   const [model, setModel] = useState(MODELS[0].id);
   const [effort, setEffort] = useState("high");
   const [variant, setVariant] = useState("full");
+  const [edge, setEdge] = useState<number | null>(null);
   const [sheets, setSheets] = useState<SheetRow[]>([]);
   const [items, setItems] = useState<ItemRow[]>([]);
   const [trials, setTrials] = useState<ModelTrialRow[]>([]);
@@ -86,7 +104,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     const r = await fetch(`/api/sheets/${sheetId}/trial`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
-      body: JSON.stringify({ model, effort, variant }),
+      body: JSON.stringify({ model, effort, variant, edge }),
     });
     const j = await r.json();
     if (j?.setup) throw new SetupError(j?.error ?? "설정이 덜 됐습니다.");
@@ -124,9 +142,12 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   // 이 조합의 가장 최근 실험만 씁니다. 같은 조건을 두 번 돌렸으면 나중 것.
   const latest = new Map<string, ModelTrialRow>();
   for (const t of trials) {
-    // 형식도 조건입니다. 안 걸러내면 지난 실험과 이번 실험이 섞입니다.
+    // 형식·해상도도 조건입니다. 안 걸러내면 지난 실험과 이번 실험이 섞입니다.
     const v = t.variant ?? "full";
-    if (t.model === model && t.effort === effort && v === variant && !latest.has(t.sheet_id)) latest.set(t.sheet_id, t);
+    const e = t.edge ?? null;
+    if (t.model === model && t.effort === effort && v === variant && e === edge && !latest.has(t.sheet_id)) {
+      latest.set(t.sheet_id, t);
+    }
   }
 
   const pairs: { sheet: SheetRow; trial: ModelTrialRow; base: Run; diff: Diff }[] = [];
@@ -294,6 +315,20 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             </select>
           </label>
           <label className="text-sm">
+            <span className="block text-slate-700">사진 해상도</span>
+            <select
+              value={edge === null ? "" : String(edge)}
+              onChange={(e) => setEdge(e.target.value === "" ? null : Number(e.target.value))}
+              className="mt-1 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+            >
+              {EDGE_OPTIONS.map((o) => (
+                <option key={o.label} value={o.id === null ? "" : String(o.id)}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
             <span className="block text-slate-700">출력 형식</span>
             <select
               value={variant}
@@ -347,6 +382,11 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           {chosen?.note}
           {variant !== "full" && (
             <span className="ml-2 text-slate-600">· {VARIANTS.find((v) => v.id === variant)?.note}</span>
+          )}
+          {edge !== null && (
+            <span className="ml-2 text-slate-600">
+              · 사진을 {edge}px로 줄여 보냅니다. <strong>연필이 읽히는지</strong>가 전부입니다 — 전사가 다른 칸을 보십시오
+            </span>
           )}
           {pairs.length > 0 && (
             <span className="ml-2">

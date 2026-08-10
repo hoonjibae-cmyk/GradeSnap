@@ -8,6 +8,8 @@ import { bearer, userClient } from "@/lib/db/client";
 import { downloadPage, getSheet, me, pagesOf, recordUsage, saveTrial } from "@/lib/db/queries";
 import type { CallOptions } from "@/lib/grading/client";
 import { VARIANTS, type Variant } from "@/lib/grading/provider";
+import { EDGES } from "@/lib/grading/resize";
+import { downscale } from "@/lib/grading/downscale";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -38,11 +40,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let model: string;
   let effort: string;
   let variant: string;
+  let edge: number | null;
   try {
-    const body = (await req.json()) as { model?: string; effort?: string; variant?: string };
+    const body = (await req.json()) as { model?: string; effort?: string; variant?: string; edge?: number | null };
     model = String(body?.model ?? "");
     effort = String(body?.effort ?? "high");
     variant = String(body?.variant ?? "full");
+    edge = body?.edge == null ? null : Number(body.edge);
   } catch {
     return NextResponse.json({ error: "요청 본문을 읽을 수 없습니다." }, { status: 400 });
   }
@@ -57,6 +61,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (!VARIANTS.includes(variant as Variant)) {
     return NextResponse.json({ error: `모르는 출력 형식입니다: ${variant}` }, { status: 400 });
+  }
+  if (edge !== null && !(EDGES as readonly number[]).includes(edge)) {
+    return NextResponse.json({ error: `모르는 해상도입니다: ${edge}` }, { status: 400 });
   }
 
   const db = userClient(token);
@@ -97,7 +104,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const parts = [];
     const usage = [];
     for (const p of pages) {
-      const data = await downloadPage(db, p.storage_path);
+      const stored = await downloadPage(db, p.storage_path);
+      /*
+        **여기서만 줄입니다.** 실제 채점은 접수할 때 브라우저가 줄인 것을
+        그대로 씁니다. 재서 통과하면 고칠 곳은 `lib/image.ts`의 `MAX_EDGE`이고,
+        그러면 서버에서 줄일 일이 아예 없어집니다.
+      */
+      const data = edge === null ? stored : await downscale(stored, edge);
       const r = await transcribe(client, { mediaType: "image/jpeg", data }, opts);
       parts.push(r.transcript);
       usage.push(r.usage);
@@ -121,6 +134,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       model,
       effort,
       variant,
+      edge,
       transcript,
       results,
       warnings,
@@ -159,6 +173,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         model,
         effort,
         variant,
+        edge,
         transcript: null,
         results: null,
         warnings: [],
