@@ -14,6 +14,10 @@ import type { Usage } from "./types";
 
 export type Provider = "anthropic" | "openai";
 
+/** 출력 JSON 형식. DB의 `model_trials.variant`와 같은 값입니다. */
+export const VARIANTS = ["full", "items", "compact"] as const;
+export type Variant = (typeof VARIANTS)[number];
+
 export interface CallOptions {
   model?: string;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
@@ -23,10 +27,19 @@ export interface CallOptions {
    */
   thinking?: boolean;
   /**
-   * 출력 JSON의 **필드 이름을 짧게** 받습니다(docs/13 §13.21).
-   * 뜻과 값은 그대로이고, 받은 뒤 원래 이름으로 되돌립니다.
+   * 출력 JSON 형식(docs/13 §13.21).
+   *
+   * | | 전사 | 판정 |
+   * |---|---|---|
+   * | `full`    | 그대로 | 그대로 |
+   * | `items`   | **압축** | 그대로 |
+   * | `compact` | 압축 | 압축 |
+   *
+   * **단계를 나눈 이유는 실측입니다.** 불리언 하나로 두 단계를 같이 켰더니
+   * 전사는 멀쩡한데(다른 칸 4 < 잡음 9) 판정만 관대해졌습니다(6:0).
+   * 어느 단계가 손해인지 알 수 없으면 둘 다 버려야 합니다.
    */
-  compact?: boolean;
+  variant?: Variant;
 }
 
 export interface ImageInput {

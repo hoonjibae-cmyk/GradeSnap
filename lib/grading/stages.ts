@@ -28,7 +28,8 @@ export async function transcribe(
     `description`이 그대로 나르고, 받은 뒤에 원래 이름으로 되돌리므로
     이 함수 바깥은 아무것도 안 바뀝니다.
   */
-  const compact = opts?.compact === true;
+  // 전사는 `items`·`compact` 둘 다 압축입니다.
+  const compact = opts?.variant === "items" || opts?.variant === "compact";
   const { data, usage } = await client.callJson<RawTranscript>(
     {
       system: TRANSCRIBE_SYSTEM,
@@ -113,12 +114,26 @@ export async function judge(
     legible: i.legible,
   }));
 
-  const compact = opts?.compact === true;
+  /*
+    🔴 판정은 `compact`에서만 압축합니다.
+
+    실측(2026-08-10): 전사가 **완전히 같은** 답안지에서 판정만 4건이 갈렸고,
+    방향이 6:0으로 전부 '오답을 놓치는' 쪽이었습니다. `"correct": false`를
+    `"c": false`로 바꾸면 모델이 무엇을 정하는 중인지 알려주는 낱말이
+    사라집니다 — 옮겨 적기(전사)와 달리 **따지는 일에는 그 낱말이 값을 합니다.**
+  */
+  const compact = opts?.variant === "compact";
   const { data, usage } = await client.callJson<{ results: JudgeResult[] }>(
     {
       system: judgeSystem(strictSpelling),
-      // 들여쓰기를 안 씁니다. 판정 단계는 이 JSON이 통째로 입력 토큰입니다.
-      text: "아래는 한 답안지를 전사한 결과입니다. 문항마다 정오를 판정하십시오.\n\n" + JSON.stringify(payload),
+      /*
+        들여쓰기는 **압축일 때만** 뺍니다. 조건 밖에 두는 바람에 실제 채점의
+        입력까지 조용히 바뀌었습니다(2026-08-10). 재보지 않은 변경이
+        운영으로 새어 나간 것이고, 잡음 바닥과 비교할 기준선도 흔들립니다.
+      */
+      text:
+        "아래는 한 답안지를 전사한 결과입니다. 문항마다 정오를 판정하십시오.\n\n" +
+        (compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 1)),
       schema: compact ? compactJudgeSchema(JUDGE_SCHEMA) : JUDGE_SCHEMA,
     },
     opts,

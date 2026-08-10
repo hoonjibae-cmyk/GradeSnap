@@ -17,6 +17,7 @@ migrations/20260808000700_users_usage.sql       -- 직원 켜고 끄기 · 근�
 migrations/20260809000100_work_hours.sql        -- 근무 시간을 요일별로
 migrations/20260810000100_grading_model.sql     -- 채점 모델을 관리 화면에서 고름
 migrations/20260810000200_trial_variant.sql     -- 실험에 '출력 형식' 축 추가
+migrations/20260810000300_trial_variant_items.sql  -- 압축을 전사/판정으로 나눔
 ```
 
 마지막 것을 안 돌리면 **채점이 멈춥니다.** 모르는 설정으로 돈을 쓰지 않으려고

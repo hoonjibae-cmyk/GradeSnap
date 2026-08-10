@@ -28,8 +28,17 @@ const EFFORTS = ["high", "medium", "low"];
  * 모양**도 정합니다(docs/13 §13.21). 문항 하나의 58%가 필드 이름입니다.
  */
 const VARIANTS = [
-  { id: "full", label: "지금 형식", note: "필드 이름 그대로" },
-  { id: "compact", label: "압축", note: "필드 이름을 짧게 + confidence 뺌 — 출력 약 36% 감소 예상" },
+  { id: "full", label: "지금 형식", note: "전사·판정 둘 다 원래 이름" },
+  {
+    id: "items",
+    label: "전사만 압축",
+    note: "전사 필드 이름을 짧게 + confidence 뺌. 판정은 안 건드림 — 손해가 판정에서 났습니다",
+  },
+  {
+    id: "compact",
+    label: "둘 다 압축",
+    note: "🔴 2026-08-10 실측에서 판정이 관대해졌습니다(6:0). 기록용으로만 남겨둡니다",
+  },
 ];
 /** 실험은 급하지 않습니다. 실제 채점이 밀리지 않게 둘만 씁니다. */
 const LANES = 2;
