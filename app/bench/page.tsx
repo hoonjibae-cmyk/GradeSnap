@@ -8,6 +8,7 @@ import type { ItemRow, ModelTrialRow, SheetRow, StaffRow } from "@/lib/db/schema
 import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
 import { CATALOG, info } from "@/lib/grading/provider";
 import { markHidden, oddChars } from "@/lib/invisible";
+import { compare } from "@/lib/grading/compare";
 
 /**
  * 값싼 모델로 바꾸면 무엇을 잃는가 — 실측하는 화면.
@@ -122,16 +123,40 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     // 기준의 설정은 **그 답안지를 실제로 채점한 값**입니다. 고정해두면
     // 운영 기본값을 바꾼 뒤 화면이 거짓말을 합니다.
     const baseUsage = (s.token_usage ?? [])[0];
+    const sysResults = rows.map((i) => ({
+      no: i.no,
+      correct: i.correct ?? false,
+      expected: i.expected,
+      note: i.note,
+    }));
+    /*
+      🔴 **`sheets.n_wrong`·`sheets.verdict`를 쓰면 안 됩니다.**
+
+      검수에서 선생님이 문항을 뒤집으면 `/recount`가 그 값을 다시 씁니다.
+      그때 쓰는 것은 `final_correct` — **선생님이 고친 값**입니다. 반면 위의
+      정오 대조는 `items.correct`, 즉 **시스템이 내놓은 값**을 씁니다.
+
+      둘을 같은 줄에 놓으면 `오답 1 → 오답 2`인데 `정오 차이 없음`처럼
+      앞뒤가 안 맞고(2026-08-10 실제로 그랬습니다), 더 나쁘게는 판정 일치율에
+      **선생님의 수정이 섞여 들어갑니다.** 여기서 답하려는 질문은
+      "값싼 모델이 지금 시스템이 내놓는 결과를 재현하는가"이지
+      "선생님과 얼마나 맞는가"가 아닙니다.
+
+      그래서 기준의 오답·판정도 **같은 출처에서 다시 셉니다.**
+      커트라인 우선순위는 `/recount`와 같게 둡니다.
+    */
+    const cutText = s.cut_line ?? s.transcript?.sheet.cutLine ?? "";
+    const cmpBase = compare(sysResults, { wrong: [], passFail: "unmarked" }, cutText, 2, s.missing ?? 0);
     const base: Run = {
       model: baseUsage?.model ?? "claude-opus-5",
       effort: baseUsage?.effort ?? "high",
       items: rows.map((i) => ({ no: i.no, written: i.written })),
-      results: rows.map((i) => ({ no: i.no, correct: i.correct ?? false, expected: i.expected, note: i.note })),
-      cut: s.cut,
-      nWrong: s.n_wrong ?? 0,
-      verdict: s.verdict,
-      nearBoundary: Boolean(s.near_boundary),
-      margin: s.margin,
+      results: sysResults,
+      cut: cmpBase.cut,
+      nWrong: cmpBase.oursWrong.length,
+      verdict: cmpBase.ourVerdict,
+      nearBoundary: cmpBase.nearBoundary,
+      margin: cmpBase.margin,
       costUsd: Number(s.cost_usd ?? 0),
       latencyMs: (s.token_usage ?? []).reduce((a, u) => a + u.latencyMs, 0),
     };
@@ -477,7 +502,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
               </tr>
             </thead>
             <tbody>
-              {pairs.map(({ sheet: s, diff: d }) => (
+              {pairs.map(({ sheet: s, base: b, diff: d }) => (
                 <tr
                   key={s.id}
                   className={`border-t border-slate-100 ${
@@ -491,7 +516,8 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                   </td>
                   <td className="p-2">
                     {d.baseVerdict ? d.baseVerdict.toUpperCase() : "—"}
-                    <span className="ml-1 text-xs text-slate-500">오답 {s.n_wrong}</span>
+                    {/* 선생님이 고친 `sheets.n_wrong`이 아니라 **시스템이 내놓은 값**입니다. */}
+                    <span className="ml-1 text-xs text-slate-500">오답 {b.nWrong}</span>
                   </td>
                   <td className="p-2">
                     {d.trialVerdict ? d.trialVerdict.toUpperCase() : "—"}
