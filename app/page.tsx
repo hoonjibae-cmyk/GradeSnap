@@ -8,6 +8,7 @@ import { needsReview, type SheetRow, type StaffRow } from "@/lib/db/schema";
 import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
 import { pushRecent } from "@/lib/recent";
 import { describeGrading } from "@/lib/grading/provider";
+import { describeWait, medianSeconds, waitSeconds } from "@/lib/queue";
 
 /**
  * 접수 화면 — 조교가 하루 종일 열어두는 곳입니다.
@@ -120,6 +121,21 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   const review = sheets.filter(needsReview).length;
   const cost = sheets.reduce((a, s) => a + Number(s.cost_usd ?? 0), 0);
 
+  /*
+    **학생이 가기 전에 결과가 나와야 합니다**(2026-08-10 원장님 확인).
+    그러면 조교가 알아야 하는 것이 하나 더 있습니다 — 얼마나 기다려야 하나.
+    "채점 중 3"만 보고는 3분인지 15분인지 모르고, 모르면 학생을 잡아둘지
+    보낼지 정할 수가 없습니다.
+
+    한 장의 채점 시간은 쌓인 양과 무관합니다. 늘어나는 건 **줄 서는 시간**뿐입니다.
+  */
+  const queued = sheets.filter((s) => s.status === "queued").length;
+  const sec = medianSeconds(
+    sheets.filter((s) => s.token_usage?.length).map((s) => (s.token_usage ?? []).reduce((a, u) => a + u.latencyMs, 0)),
+  );
+  // 잰 게 없으면 안 띄웁니다. 틀린 대기 시간은 없는 것보다 나쁩니다.
+  const wait = sec === null ? "" : describeWait(waitSeconds({ queued, running: busyLanes, lanes: LANES, secPerSheet: sec }));
+
   return (
     <main className="mx-auto max-w-3xl p-5 pb-24">
       <Bar db={db} staff={staff} />
@@ -155,7 +171,9 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             </span>
           </div>
           <span className="text-xs text-slate-500">
-            {busyLanes > 0 && <span className="mr-2 text-slate-700">채점 중 {busyLanes}</span>}${cost.toFixed(2)}
+            {busyLanes > 0 && <span className="mr-2 text-slate-700">채점 중 {busyLanes}</span>}
+            {queued > 0 && <span className="mr-2 text-amber-700">대기 {queued}</span>}
+            {wait && <span className="mr-2 font-medium text-slate-700">마지막 것 {wait}</span>}${cost.toFixed(2)}
           </span>
         </div>
 
