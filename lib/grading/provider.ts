@@ -97,34 +97,47 @@ export const CATALOG: ModelInfo[] = [
     `DEFAULT_MODEL`이 Anthropic 모델만 받는 이유입니다.
   */
   {
-    id: "gpt-5.4",
-    label: "GPT-5.4",
+    id: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol",
     provider: "openai",
-    note: "단가 미상 — 확인 후 CATALOG에 적어야 비용 비교가 됩니다",
-    price: null,
+    note: "입력 5 / 출력 30 — Opus의 115%. 값이 아니라 성능을 보려는 자리",
+    price: [5.0, 30.0],
   },
   {
-    id: "gpt-5.4-mini",
-    label: "GPT-5.4 mini",
+    id: "gpt-5.6-terra",
+    label: "GPT-5.6 Terra",
     provider: "openai",
-    note: "단가 미상 — 확인 후 CATALOG에 적어야 비용 비교가 됩니다",
-    price: null,
+    note: "입력 2 / 출력 12 — Opus의 46%",
+    price: [2.0, 12.0],
   },
   {
-    id: "gpt-5",
-    label: "GPT-5",
+    id: "gpt-5.6-luna",
+    label: "GPT-5.6 Luna",
     provider: "openai",
-    note: "입력 1.25 / 출력 10",
-    price: [1.25, 10.0],
-  },
-  {
-    id: "gpt-5-mini",
-    label: "GPT-5 mini",
-    provider: "openai",
-    note: "입력 0.25 / 출력 2",
-    price: [0.25, 2.0],
+    note: "입력 0.2 / 출력 1.2 — Opus의 5%",
+    price: [0.2, 1.2],
   },
 ];
+
+/*
+  단가 출처: OpenAI 공식 가격표(2026-08-10 원장님 확인). 2026-07-30에
+  Luna가 80%, Terra가 20% 내렸으므로 **그 이전에 계산한 값은 틀립니다.**
+
+  `note`의 비율은 실측 토큰(전사 1쪽 = 입력 4,993 / 출력 3,306 — docs/12 §12.2)
+  으로 계산했습니다. **절대 금액이 아니라 비율로 적은 이유**는 실제 채점 한
+  건이 전사 여러 쪽 + 판정 한 번이라 쪽수마다 달라지기 때문입니다. 비율은
+  단가로만 정해지므로 쪽수와 무관하게 맞습니다.
+
+  이 시험지에서 **비용의 70%가 출력**입니다(문항마다 9개 필드를 뱉습니다).
+  그래서 고를 때 봐야 할 것은 입력 단가가 아니라 출력 단가입니다.
+
+  안 넣은 것 둘:
+
+    Long Context 할증  272K 토큰을 넘으면 두 배입니다. 우리 요청은 5천
+                       토큰이라 걸릴 일이 없습니다.
+    Batch API 50% 할인 조교가 접수하고 **기다리는** 흐름이라 못 씁니다.
+                       실시간이 아니면 값이 없는 화면입니다.
+*/
 
 export const info = (model: string): ModelInfo | undefined => CATALOG.find((m) => m.id === model);
 

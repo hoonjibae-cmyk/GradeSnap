@@ -42,15 +42,30 @@ describe("비용", () => {
     /*
       0으로 두면 `/bench`의 비용 칸이 `$0.000`이 되고, 그건 "공짜"로 읽힙니다.
       값싼 모델을 고르려고 만든 화면에서 가장 나쁜 종류의 거짓말입니다.
+
+      지금은 목록의 모든 모델에 단가가 있어 아래 반복문이 빕니다. 그래도
+      남겨둡니다 — 단가를 모르는 모델을 넣는 순간 이 규칙이 다시 살아납니다.
     */
-    const unknown = CATALOG.find((m) => !m.price);
-    expect(unknown).toBeDefined();
-    expect(costUsd([use(1_000_000, 1_000_000)], unknown!.id)).toBeNull();
-    expect(knownPrice(unknown!.id)).toBe(false);
+    for (const m of CATALOG.filter((x) => !x.price)) {
+      expect(costUsd([use(1_000_000, 1_000_000)], m.id)).toBeNull();
+      expect(knownPrice(m.id)).toBe(false);
+    }
+    expect(costUsd([use(1_000_000, 0)], "gpt-9")).toBeNull();
+    expect(knownPrice("gpt-9")).toBe(false);
   });
 
-  it("아예 모르는 모델 이름도 null이다", () => {
-    expect(costUsd([use(1_000_000, 0)], "gpt-9")).toBeNull();
+  it("화면에 적어둔 'Opus 대비 몇 %'가 실제 계산과 맞는다", () => {
+    /*
+      실측 토큰은 전사 1쪽 = 입력 4,993 / 출력 3,306 (docs/12 §12.2).
+      `note`에 적힌 비율이 여기서 나옵니다 — 표시와 계산이 갈리면 원장님이
+      틀린 값으로 모델을 고릅니다.
+    */
+    const page = [use(4_993, 3_306)];
+    const rel = (id: string) => Math.round((costUsd(page, id)! / costUsd(page, "claude-opus-5")!) * 100);
+    expect(rel("gpt-5.6-sol")).toBe(115);
+    expect(rel("gpt-5.6-terra")).toBe(46);
+    expect(rel("gpt-5.6-luna")).toBe(5);
+    expect(rel("claude-sonnet-5")).toBe(60);
   });
 });
 
