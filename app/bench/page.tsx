@@ -328,6 +328,16 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
               {sum.trialUndecided > 0 && (
                 <span className="ml-2 text-amber-700">대상만 판정 못 냄 {sum.trialUndecided}장</span>
               )}
+              {/*
+                **일치율의 분모는 양쪽 다 판정을 낸 장뿐입니다.**
+                대상이 판정을 못 낸 장은 분모에서 빠지므로, 그게 있는데도
+                "100%"만 보면 못 낸 장이 안 보입니다. 100%일수록 위험합니다.
+              */}
+              {sum.trialUndecided > 0 && sum.verdictAgree === sum.compared && (
+                <span className="ml-2 text-amber-800">
+                  — 100%는 {sum.compared}장 기준이고, 못 낸 {sum.trialUndecided}장은 여기 안 들어 있습니다
+                </span>
+              )}
               {sum.incomparable > 0 && (
                 <span className="ml-2 text-slate-500">기준도 판정 없음 {sum.incomparable}장</span>
               )}
@@ -488,7 +498,23 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                   </td>
                   <td className="p-2">
                     {d.verdictMatch === null ? (
-                      <span className="text-amber-700">한쪽만</span>
+                      /*
+                        **왜 판정을 못 냈는지가 핵심입니다.**
+
+                        커트라인을 못 읽은 것이면 대상 모델의 흠이고 —
+                        머리말 한 줄을 못 읽는 모델은 그만큼 조교 손이 갑니다.
+                        덜 읽혀서 보류한 것이면 오히려 옳게 행동한 것입니다.
+                        "한쪽만" 한 마디로 뭉치면 둘이 같아 보입니다.
+                      */
+                      <span className="text-amber-700">
+                        {d.trialVerdict === null && latest.get(s.id)?.cut === null ? (
+                          <span title="머리말의 커트라인 표기를 못 읽어 판정을 낼 수 없었습니다">
+                            커트라인 못 읽음
+                          </span>
+                        ) : (
+                          "한쪽만"
+                        )}
+                      </span>
                     ) : d.verdictMatch ? (
                       <span className="text-emerald-700">같음</span>
                     ) : d.baseNearBoundary ? (
