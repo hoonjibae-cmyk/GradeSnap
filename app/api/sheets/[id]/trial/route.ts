@@ -58,6 +58,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "모델 비교는 관리자만 돌릴 수 있습니다." }, { status: 403 });
   }
 
+  /*
+    🔴 **키를 여기서 확인합니다 — try 밖에서.**
+
+    안에 두면 키가 없을 때 그게 답안지마다 "실험 실패"로 기록됩니다. 그러면
+    화면에는 여섯 장이 실패한 것으로 보이고, 다시 돌릴 수도 없고, 무엇보다
+    **설정 실수가 모델의 흠으로 남습니다.** 재려는 것은 모델의 실력이지
+    우리가 환경 변수를 넣었는지가 아닙니다.
+
+    실제로 그렇게 됐습니다(2026-08-10). 키 없이 여섯 장을 돌렸더니
+    `OPENAI_API_KEY가 설정되지 않았습니다`가 여섯 번 실험 기록으로 쌓였습니다.
+
+    키 문제는 답안지와 무관하므로 **한 번 답하고 끝냅니다.** 기록도 안 남깁니다.
+  */
+  let client;
+  try {
+    client = clientFor(model);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, setup: true, error: message }, { status: 400 });
+  }
+
   const opts: CallOptions = { model, effort: effort as CallOptions["effort"] };
   const t0 = Date.now();
 
@@ -66,7 +87,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const pages = await pagesOf(db, id);
     if (!pages.length) throw new Error("사진이 없습니다. 90일이 지나 지워졌을 수 있습니다.");
 
-    const client = clientFor(model);
     const parts = [];
     const usage = [];
     for (const p of pages) {

@@ -24,6 +24,9 @@ const EFFORTS = ["high", "medium", "low"];
 /** 실험은 급하지 않습니다. 실제 채점이 밀리지 않게 둘만 씁니다. */
 const LANES = 2;
 
+/** 설정 때문에 못 돌린 것. 답안지마다 되풀이할 이유가 없어 한 번에 멈춥니다. */
+class SetupError extends Error {}
+
 function todayLocal() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -61,15 +64,14 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       body: JSON.stringify({ model, effort }),
     });
     const j = await r.json();
+    if (j?.setup) throw new SetupError(j?.error ?? "설정이 덜 됐습니다.");
     if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
   }
 
-  /** 아직 이 조합으로 안 돌려본 답안지만 돌립니다. 같은 걸 두 번 사지 않습니다. */
-  async function runAll() {
+  async function run(list: SheetRow[]) {
     setErr(null);
     stop.current = false;
-    const todo = sheets.filter((s) => !trials.some((t) => t.sheet_id === s.id && t.model === model && t.effort === effort));
-    const queue = [...todo];
+    const queue = [...list];
     const lane = async () => {
       for (;;) {
         if (stop.current) return;
@@ -80,6 +82,11 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           await runOne(s.id);
         } catch (e) {
           setErr(e instanceof Error ? e.message : String(e));
+          /*
+            키가 없는데 나머지 장을 계속 두드릴 이유가 없습니다. 같은 오류가
+            장 수만큼 쌓일 뿐이고, 그 사이 진짜 실패와 섞입니다.
+          */
+          if (e instanceof SetupError) stop.current = true;
         } finally {
           setRunning((n) => n - 1);
           void load().catch(() => {});
@@ -138,9 +145,19 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     pairs.push({ sheet: s, trial: t, base, diff: diffRuns(base, trial) });
   }
 
-  const failures = sheets
-    .map((s) => latest.get(s.id))
-    .filter((t): t is ModelTrialRow => Boolean(t?.error));
+  /** 이 조합으로 아직 한 번도 안 돌려본 답안지. 같은 걸 두 번 사지 않습니다. */
+  const untried = sheets.filter((s) => !latest.has(s.id));
+  /** 돌렸는데 실패한 답안지. **다시 돌릴 수 있어야 합니다** — 키를 넣고 오면 될 일입니다. */
+  const failed = sheets.filter((s) => latest.get(s.id)?.error);
+  const failures = failed.map((s) => latest.get(s.id)!);
+
+  /*
+    같은 메시지가 여섯 줄 늘어서면 여섯 가지 문제로 보입니다. 실제로는 하나입니다.
+  */
+  const reasons = [...new Map(failures.map((t) => [t.error, 0])).keys()].map((msg) => ({
+    msg: msg ?? "(이유 없음)",
+    n: failures.filter((t) => t.error === msg).length,
+  }));
   const sum = summarize(pairs.map((p) => ({ base: p.base, diff: p.diff })));
   const lean = bias(sum);
   const done = latest.size;
@@ -215,12 +232,35 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             </select>
           </label>
           <button
-            onClick={() => void runAll()}
-            disabled={running > 0 || sheets.length === 0}
+            onClick={() => void run(untried)}
+            disabled={running > 0 || untried.length === 0}
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
-            {running > 0 ? `돌리는 중… (${running})` : `안 돌려본 것 돌리기 (${sheets.length - done}장)`}
+            {running > 0 ? `돌리는 중… (${running})` : `안 돌려본 것 돌리기 (${untried.length}장)`}
           </button>
+          {/*
+            실패한 장을 다시 못 돌리면 화면이 막힙니다 — 실패도 '돌려본 것'이라
+            위 단추가 0장이 되기 때문입니다. 키를 넣고 돌아왔을 때 누를 곳이
+            있어야 합니다.
+          */}
+          {failed.length > 0 && (
+            <button
+              onClick={() => void run(failed)}
+              disabled={running > 0}
+              className="rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-medium text-rose-800 disabled:opacity-40"
+            >
+              실패한 {failed.length}장 다시 돌리기
+            </button>
+          )}
+          {running === 0 && done > 0 && (
+            <button
+              onClick={() => void run(sheets)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600"
+              title="같은 조합을 한 번 더 돌립니다. 잡음 바닥을 재거나 흔들리는 장을 확인할 때 씁니다."
+            >
+              전부 다시 ({sheets.length}장)
+            </button>
+          )}
           {running > 0 && (
             <button onClick={() => (stop.current = true)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
               중단
@@ -354,13 +394,26 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 
       {failures.length > 0 && (
         <section className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
-          <strong>{failures.length}장은 아예 실패했습니다.</strong> 이것도 결과입니다 — 값싼 모델이 스키마를
-          못 맞추거나 거절한 것입니다.
+          <strong>{failures.length}장이 실패했습니다.</strong>
+          {/*
+            예전에는 여기서 "값싼 모델이 스키마를 못 맞추거나 거절한 것"이라고
+            **단정했습니다.** 실제로 처음 뜬 실패는 우리가 키를 안 넣은 것이었고,
+            화면은 그걸 모델 탓으로 적었습니다. 이유는 메시지에 있으니
+            화면이 지어내지 않습니다.
+          */}{" "}
+          모델이 스키마를 못 맞췄을 수도, 거절했을 수도, 설정이 빠졌을 수도 있습니다.{" "}
+          <strong>아래 메시지가 이유입니다.</strong>
           <ul className="mt-1 list-disc pl-5 text-xs">
-            {failures.slice(0, 5).map((t) => (
-              <li key={t.id}>{t.error}</li>
+            {reasons.slice(0, 5).map((r) => (
+              <li key={r.msg}>
+                {r.msg}
+                {r.n > 1 && <span className="ml-1 text-rose-700">({r.n}장)</span>}
+              </li>
             ))}
           </ul>
+          <p className="mt-2 text-xs">
+            고치고 나면 위의 <strong>&ldquo;실패한 {failed.length}장 다시 돌리기&rdquo;</strong>를 누르십시오.
+          </p>
         </section>
       )}
 
