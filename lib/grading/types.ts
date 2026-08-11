@@ -128,4 +128,11 @@ export interface Usage {
    * 옛 기록에는 없으므로 선택입니다.
    */
   effort?: string;
+  /**
+   * 프롬프트 캐시 토큰. **캐시가 걸리면 `inputTokens`에서 이 몫이 빠져서
+   * 옵니다** — 안 적으면 비용 계산이 캐시된 만큼 조용히 싸게 셉니다.
+   * 읽기는 정가의 10%, 쓰기는 125%입니다.
+   */
+  cacheRead?: number;
+  cacheWrite?: number;
 }

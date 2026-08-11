@@ -76,7 +76,16 @@ async function callJson<T>(
   const msg = await client.messages.create({
     model,
     max_tokens: 16000,
-    system: req.system,
+    /*
+      시스템 프롬프트에 **캐시 표시만** 붙입니다. 글자는 한 자도 안 바꿉니다 —
+      프롬프트가 바뀌면 재봐야 하고(§13.21에서 데었습니다), 이건 같은 글자를
+      싸게 보내는 것뿐이라 잴 것이 없습니다.
+
+      최소 길이(1,024토큰)를 넘을 때만 실제로 캐시됩니다. 못 넘으면 아무 일도
+      안 일어납니다 — 그래서 붙여두고 관리 화면 「비용」으로 확인합니다.
+      수업 시간에는 호출이 분 단위로 이어져 5분 TTL 안에서 계속 맞습니다.
+    */
+    system: [{ type: "text" as const, text: req.system, cache_control: { type: "ephemeral" as const } }],
     messages: [{ role: "user", content }],
     ...(opts.thinking === false ? { thinking: { type: "disabled" as const } } : {}),
     output_config: {
@@ -98,6 +107,9 @@ async function callJson<T>(
       // 나중에 "이 답안지는 어떤 설정으로 채점됐나"를 되짚으려면 남아 있어야 합니다.
       // 칼럼을 새로 파지 않고 usage jsonb에 같이 넣습니다.
       effort: opts.effort ?? DEFAULT_EFFORT,
+      // 캐시가 걸린 만큼 input_tokens에서 빠져서 옵니다. 안 적으면 비용이 거짓말합니다.
+      cacheRead: msg.usage.cache_read_input_tokens ?? 0,
+      cacheWrite: msg.usage.cache_creation_input_tokens ?? 0,
     },
   };
 }

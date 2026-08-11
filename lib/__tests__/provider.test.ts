@@ -102,3 +102,28 @@ describe("실제 채점에 쓸 설정", () => {
     expect(normalizeGrading(null, "low")).toBeNull();
   });
 });
+
+describe("캐시 단가", () => {
+  const u = (o: Partial<Usage>): Usage => ({ latencyMs: 0, inputTokens: 0, outputTokens: 0, model: "x", ...o });
+
+  it("캐시 읽기는 10%, 쓰기는 125%", () => {
+    // 1M 읽기 = 정가 $5의 10% = $0.5 · 1M 쓰기 = $6.25
+    expect(costUsd([u({ cacheRead: 1_000_000 })], "claude-opus-5")).toBeCloseTo(0.5);
+    expect(costUsd([u({ cacheWrite: 1_000_000 })], "claude-opus-5")).toBeCloseTo(6.25);
+  });
+
+  it("🔴 캐시 토큰을 빼먹으면 비용이 싸게 나온다 — 그래서 따로 센다", () => {
+    /*
+      캐시가 걸리면 그 몫이 input_tokens에서 빠져서 옵니다. 이 테스트가
+      없었다면 캐싱을 켠 날부터 비용 화면이 조용히 거짓말을 했을 것입니다.
+    */
+    const cached = costUsd([u({ inputTokens: 4_000, cacheRead: 1_000, outputTokens: 3_000 })], "claude-opus-5")!;
+    const uncached = costUsd([u({ inputTokens: 5_000, outputTokens: 3_000 })], "claude-opus-5")!;
+    expect(cached).toBeLessThan(uncached); // 읽기가 싸니 총액은 내려가고
+    expect(cached).toBeGreaterThan(costUsd([u({ inputTokens: 4_000, outputTokens: 3_000 })], "claude-opus-5")!); // 공짜는 아닙니다
+  });
+
+  it("옛 기록(캐시 칸 없음)은 예전 그대로 계산된다", () => {
+    expect(costUsd([u({ inputTokens: 1_000_000 })], "claude-opus-5")).toBeCloseTo(5);
+  });
+});

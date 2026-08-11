@@ -215,5 +215,12 @@ export function costUsd(usages: Usage[], model: string): number | null {
   const [pin, pout] = price;
   const i = usages.reduce((a, u) => a + u.inputTokens, 0);
   const o = usages.reduce((a, u) => a + u.outputTokens, 0);
-  return (i * pin + o * pout) / 1_000_000;
+  /*
+    캐시된 입력은 `inputTokens`에 **안 들어 있습니다.** 읽기 10% · 쓰기 125%로
+    따로 셉니다. 안 세면 캐시가 걸리는 날부터 비용 화면이 실제보다 싸게
+    말합니다 — 그 화면으로 절감을 판단하는데요.
+  */
+  const r = usages.reduce((a, u) => a + (u.cacheRead ?? 0), 0);
+  const w = usages.reduce((a, u) => a + (u.cacheWrite ?? 0), 0);
+  return (i * pin + r * pin * 0.1 + w * pin * 1.25 + o * pout) / 1_000_000;
 }

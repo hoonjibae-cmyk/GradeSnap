@@ -6,9 +6,11 @@ import { Bar, Gate } from "@/components/Gate";
 import {
   allStaff,
   getSettings,
+  deleteSheet,
   gradedBetween,
   pagesFor,
   retentionStatus,
+  sheetsOfStudent,
   saveGradingModel,
   saveSettings,
   saveUseExamRefs,
@@ -71,6 +73,7 @@ function Admin({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       <Cost db={db} onError={setErr} />
       <Usage db={db} onError={setErr} />
       <People db={db} meId={staff.id} onError={setErr} />
+      <Withdrawal db={db} onError={setErr} />
       <Retention db={db} onError={setErr} />
     </main>
   );
@@ -393,6 +396,165 @@ function Cost({ db, onError }: { db: SupabaseClient; onError: (m: string) => voi
             )}
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 동의 철회 — 한 학생 것 전부 지우기
+// ---------------------------------------------------------------------------
+
+/**
+ * 개인정보 동의 철회를 처리합니다(docs/14 §14.7).
+ *
+ * 동의서에 **"철회 시 7일 안에 파기"**라고 적어 돌렸습니다. 약속을 지키는
+ * 코드가 이것입니다 — 이름으로 찾아 그 학생의 답안지를 **행째** 지웁니다.
+ * 사진, 전사, 판정, 이름 전부입니다. 사진만 지우고 전사를 남기면 학생이
+ * 쓴 답과 이름이 그대로 남아 파기가 아닙니다.
+ *
+ * **정확히 같은 이름만** 찾습니다. 동명이인은 반·날짜를 보고 사람이
+ * 가립니다 — 그래서 전체 삭제 단추 옆에 장마다 지우는 단추도 있습니다.
+ *
+ * 지우는 순서는 `deleteSheet`가 지킵니다: **사진 먼저, 행은 나중.**
+ * 중간에 끊기면 사진 없는 행이 남고, 다시 지우면 됩니다. 반대 순서면
+ * "지웠다"는 행이 사라진 채 사진이 남습니다 — 약속을 어기는 쪽입니다.
+ */
+function Withdrawal({ db, onError }: { db: SupabaseClient; onError: (m: string) => void }) {
+  const [name, setName] = useState("");
+  const [found, setFound] = useState<SheetRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<number | null>(null);
+
+  async function search() {
+    setBusy(true);
+    setDone(null);
+    try {
+      setFound(await sheetsOfStudent(db, name));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeOne(s: SheetRow) {
+    setBusy(true);
+    try {
+      await deleteSheet(db, s);
+      setFound((p) => (p ? p.filter((x) => x.id !== s.id) : p));
+      setDone((n) => (n ?? 0) + 1);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAll() {
+    if (!found?.length) return;
+    /*
+      브라우저 확인창에 **이름과 장 수**를 그대로 적습니다. "정말
+      지우시겠습니까?"만 물으면 무엇을 지우는지 안 보이고, 이 단추는
+      되돌릴 수 없습니다.
+    */
+    if (!window.confirm(`${name.trim()} 학생의 답안지 ${found.length}장을 전부 지웁니다.\n사진·전사·판정이 모두 삭제되고 되돌릴 수 없습니다.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const s of [...found]) {
+        await deleteSheet(db, s);
+        setFound((p) => (p ? p.filter((x) => x.id !== s.id) : p));
+        setDone((n) => (n ?? 0) + 1);
+      }
+    } catch (e) {
+      // 도중에 끊겨도 지운 것은 지워졌습니다. 남은 것이 목록에 그대로 보입니다.
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-bold text-slate-700">동의 철회 — 학생 기록 삭제</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        학부모가 개인정보 동의를 철회하면 <strong>7일 안에</strong> 그 학생의 답안지를 지우기로
+        동의서에 적었습니다. 이름이 정확히 같은 답안지만 찾습니다 — 사진·전사·판정·이름이 함께 지워지고
+        <strong> 되돌릴 수 없습니다.</strong>
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !busy && void search()}
+          placeholder="학생 이름 (정확히)"
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+        />
+        <button
+          onClick={() => void search()}
+          disabled={busy || !name.trim()}
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40"
+        >
+          찾기
+        </button>
+        {found && found.length > 0 && (
+          <button
+            onClick={() => void removeAll()}
+            disabled={busy}
+            className="rounded-lg bg-rose-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {found.length}장 전부 삭제
+          </button>
+        )}
+      </div>
+
+      {done !== null && (
+        <p className="mt-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-900">
+          {done}장을 지웠습니다. 사진과 기록이 함께 삭제됐습니다.
+        </p>
+      )}
+
+      {found && found.length === 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          이 이름의 답안지가 없습니다. 이름이 다르게 접수됐을 수 있으니 접수 화면에서 반·날짜로도 찾아보십시오.
+        </p>
+      )}
+
+      {found && found.length > 0 && (
+        <table className="mt-3 w-full text-sm">
+          <thead className="text-left text-xs text-slate-500">
+            <tr>
+              <th className="py-1 font-medium">접수일</th>
+              <th className="py-1 font-medium">반</th>
+              <th className="py-1 font-medium">상태</th>
+              <th className="py-1 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {found.map((s) => (
+              <tr key={s.id} className="border-t border-slate-100">
+                <td className="py-1.5">{s.created_at.slice(0, 10)}</td>
+                <td className="py-1.5">{s.class_name || "—"}</td>
+                <td className="py-1.5 text-xs text-slate-500">
+                  {s.status}
+                  {s.verdict && ` · ${s.verdict.toUpperCase()}`}
+                </td>
+                <td className="py-1.5 text-right">
+                  <button
+                    onClick={() => void removeOne(s)}
+                    disabled={busy}
+                    className="rounded border border-rose-300 px-2 py-0.5 text-xs text-rose-700 disabled:opacity-40"
+                  >
+                    이 장만 삭제
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   );

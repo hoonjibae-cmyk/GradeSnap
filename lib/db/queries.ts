@@ -406,6 +406,22 @@ export async function updateSheetInfo(
   if (res.error) throw new Error(`이름 고치기: ${res.error.message}`);
 }
 
+/**
+ * 한 학생의 답안지 전부 — **동의 철회 처리용**(docs/14 §14.7).
+ *
+ * **정확히 같은 이름만** 찾습니다(공백만 다듬음). 부분 일치로 하면
+ * '김예진'을 지우다 '김예진아'가 걸립니다. 동명이인은 화면이 반·날짜를
+ * 같이 보여줘 사람이 가립니다 — 코드가 추측하지 않습니다.
+ */
+export async function sheetsOfStudent(db: SupabaseClient, name: string): Promise<SheetRow[]> {
+  const n = name.trim();
+  if (!n) return [];
+  return ok(
+    await db.from("sheets").select("*").eq("student_name", n).order("created_at", { ascending: false }),
+    "학생 답안지 찾기",
+  ) as SheetRow[];
+}
+
 /** 올리다 만 것, 실패한 것을 지웁니다. 사진 행은 FK로 같이 사라집니다. */
 export async function deleteSheet(db: SupabaseClient, sheet: SheetRow): Promise<void> {
   const paths = ok(

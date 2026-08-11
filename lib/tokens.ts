@@ -39,7 +39,8 @@ const empty = (): Stage => ({ calls: 0, inputTokens: 0, outputTokens: 0 });
 
 const add = (s: Stage, u: Usage) => {
   s.calls++;
-  s.inputTokens += u.inputTokens;
+  // 캐시된 프리픽스도 실재 입력입니다. 단가만 다를 뿐, "어디로 가나"에서는 입력입니다.
+  s.inputTokens += u.inputTokens + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0);
   s.outputTokens += u.outputTokens;
 };
 
