@@ -41,7 +41,19 @@ export interface SettingsRow {
   /** 실제 채점에 쓰는 모델. **관리 화면에서 바꿉니다** — 환경 변수가 아닙니다. */
   grading_model: string;
   grading_effort: string;
+  /** 같은 시험 참조를 쓸 것인가(docs/13 §13.27). **기본 꺼짐** — 관리자가 켭니다. */
+  use_exam_refs: boolean;
   updated_at: string;
+}
+
+/** 시험 하나의 참조 — 제시어와 정답. **학생 정보가 없습니다.** */
+export interface ExamRefRow {
+  fingerprint: string;
+  title: string;
+  items: { no: string; prompt: string; direction: Direction; expected: string }[];
+  source_sheet: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 /**

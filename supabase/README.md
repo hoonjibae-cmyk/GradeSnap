@@ -19,6 +19,7 @@ migrations/20260810000100_grading_model.sql     -- 채점 모델을 관리 화�
 migrations/20260810000200_trial_variant.sql     -- 실험에 '출력 형식' 축 추가
 migrations/20260810000300_trial_variant_items.sql  -- 압축을 전사/판정으로 나눔
 migrations/20260811000100_trial_edge.sql        -- 실험에 '사진 해상도' 축 추가
+migrations/20260811000200_exam_refs.sql         -- 같은 시험 참조 (기본 꺼짐)
 ```
 
 마지막 것을 안 돌리면 **채점이 멈춥니다.** 모르는 설정으로 돈을 쓰지 않으려고

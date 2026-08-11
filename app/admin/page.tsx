@@ -11,6 +11,7 @@ import {
   retentionStatus,
   saveGradingModel,
   saveSettings,
+  saveUseExamRefs,
   updateStaff,
   usageBetween,
   type RetentionStatus,
@@ -128,6 +129,18 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
     }
   }
 
+  async function toggleRefs(on: boolean) {
+    setBusy(true);
+    try {
+      await saveUseExamRefs(db, on);
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-bold text-slate-700">채점 모델</h2>
@@ -204,6 +217,33 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
           특히 <strong>FAIL이 섞인 날</strong>로 재야 합니다. 통과한 답안지만 있으면 관대한 모델도 100%가 나옵니다.
         </p>
       )}
+
+      {/*
+        같은 시험 참조 (docs/13 §13.27). 실제 채점 동작이 바뀌는 것이라
+        관리자가 명시적으로 켭니다. 기본은 꺼짐 — 켜기 전과 완전히 같습니다.
+      */}
+      <div className="mt-4 border-t border-slate-200 pt-3">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={cfg.use_exam_refs === true}
+            disabled={busy}
+            onChange={(e) => void toggleRefs(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <strong>같은 시험 참조</strong>
+            <span className="block text-xs text-slate-500">
+              한 반이 같은 시험을 보면, 첫 답안지의 정답을 그 시험의 기준으로 남겨 나머지를 판정합니다.
+              <strong> 반 전체가 같은 정답으로 판정받고</strong>(지금은 학생마다 정답을 새로 만들어 흔들릴 수
+              있습니다), 밀림 검사도 참조 기준으로 한 번 더 돌며, 판정 비용이 줄어듭니다.
+              <br />
+              🔶 참조가 틀리면 반 전체에 번질 수 있습니다 — <strong>전 장 검수가 그대로 안전망</strong>이고,
+              검수 화면의 정답 칸이 참조 값입니다. 이상하면 이 스위치를 끄면 즉시 예전 방식으로 돌아갑니다.
+            </span>
+          </span>
+        </label>
+      </div>
     </section>
   );
 }

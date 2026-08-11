@@ -3,9 +3,21 @@ import { anthropic, costUsd } from "@/lib/grading/client";
 import { compare } from "@/lib/grading/compare";
 import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
-import { judge, transcribe } from "@/lib/grading/stages";
+import { judge, judgeWithKey, transcribe } from "@/lib/grading/stages";
+import { applyReference, buildReference, refFingerprint, refKey } from "@/lib/grading/reference";
+import type { JudgeResult } from "@/lib/grading/types";
 import { bearer, userClient } from "@/lib/db/client";
-import { claim, downloadPage, gradingOptions, pagesOf, recordUsage, saveFailure, saveGrading } from "@/lib/db/queries";
+import {
+  claim,
+  downloadPage,
+  getExamRef,
+  gradingOptions,
+  pagesOf,
+  recordUsage,
+  saveExamRef,
+  saveFailure,
+  saveGrading,
+} from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;

@@ -86,3 +86,29 @@ export const JUDGE_SCHEMA = {
   required: ["results"],
   additionalProperties: false,
 } as const;
+
+/**
+ * 정답이 **입력으로 주어진** 판정의 출력. `expected`가 없습니다 —
+ * 참조에서 오므로 모델이 다시 뱉을 이유가 없고, 다시 뱉게 두면
+ * 학생마다 정답이 흔들리는 문제(docs/13 §13.27)가 도로 생깁니다.
+ */
+export const JUDGE_KEY_SCHEMA = {
+  type: "object",
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          no: { type: "string" },
+          correct: { type: "boolean" },
+          note: { type: "string", description: "애매하면 한 줄 이유. 명확하면 빈 문자열" },
+        },
+        required: ["no", "correct", "note"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["results"],
+  additionalProperties: false,
+} as const;

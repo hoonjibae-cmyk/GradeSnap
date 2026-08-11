@@ -62,6 +62,20 @@ export const JUDGE_SYSTEM = `단어 시험 답안의 정오를 판정합니다. 
 5. 판독 불가(legible=false)는 정오를 판정하지 말고 correct=false, note='판독불가'로 두십시오.
 6. expected에는 그 문항의 표준 정답을 적으십시오.`;
 
+export const JUDGE_KEY_SYSTEM = `단어 시험 답안의 정오를 판정합니다. 이미지는 보지 않고, 전사된 텍스트만 봅니다.
+
+각 문항에 **표준 정답(expected)이 주어져 있습니다** — 같은 시험의 앞선 답안지에서
+확정된 것입니다. **정답을 새로 정하지 마십시오.** 학생 답이 그 정답으로 인정될 수
+있는지만 판정합니다.
+
+판정 규칙
+1. \`direction=en2ko\`(영어→우리말)는 **뜻이 통하면 정답**입니다. expected와 표기가
+   달라도 같은 뜻의 자연스러운 우리말이면 정답입니다. 'undo'의 expected가
+   '원상태로 돌리다'여도 학생이 '되돌리다'라고 썼으면 정답입니다.
+2. **다만 품사가 바뀌면 오답입니다.** 'intention(명사) → 의도하다'는 오답, '의도'라야 맞습니다.
+3. \`direction=ko2en\`(우리말→영어)은 **철자를 봅니다.** 아래 strict 설정을 따르십시오.
+4. note는 애매할 때만 한 줄, 명확하면 빈 문자열입니다.`;
+
 /** 철자를 얼마나 볼 것인가. **교육 방침이라 시험 단위로 정합니다.** */
 export const SPELLING_STRICT = `
 
@@ -74,4 +88,8 @@ export const SPELLING_LENIENT = `
 
 export function judgeSystem(strictSpelling: boolean): string {
   return JUDGE_SYSTEM + (strictSpelling ? SPELLING_STRICT : SPELLING_LENIENT);
+}
+
+export function judgeKeySystem(strictSpelling: boolean): string {
+  return JUDGE_KEY_SYSTEM + (strictSpelling ? SPELLING_STRICT : SPELLING_LENIENT);
 }

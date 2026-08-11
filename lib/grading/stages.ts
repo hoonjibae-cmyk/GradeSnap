@@ -1,6 +1,6 @@
 import type { CallOptions, ImageInput, ModelClient } from "./provider";
-import { JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeSystem } from "./prompts";
-import { JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
+import { JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeKeySystem, judgeSystem } from "./prompts";
+import { JUDGE_KEY_SCHEMA, JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
 import { ITEM_KEYS, RESULT_KEYS, compactJudgeSchema, compactTranscribeSchema, expand } from "./compact";
 import type { Item, JudgeResult, MarkReading, Sheet, Transcript, Usage } from "./types";
 
@@ -141,6 +141,52 @@ export async function judge(
   const results = compact
     ? data.results.map((r) => expand<JudgeResult>(r as unknown as Record<string, unknown>, RESULT_KEYS))
     : data.results;
+  return { results, usage };
+}
+
+/**
+ * 정답이 **이미 있는** 판정 — 같은 시험의 참조가 정답을 줍니다(docs/13 §13.27).
+ *
+ * `judge`와 두 가지가 다릅니다.
+ *
+ *   - 정답이 입력으로 들어가고 **출력에는 없습니다.** 모델이 정답을 새로
+ *     만들지 않으므로 반 안에서 정답이 흔들릴 수가 없습니다.
+ *   - 빈칸·판독불가·정답 일치는 **여기 오기 전에 코드가 끝냈습니다**
+ *     (`applyReference`). 여기 오는 것은 정답과 다르게 쓴 답뿐입니다.
+ *
+ * 결과의 `expected`는 참조 값으로 채웁니다 — 검수 화면이 그 칸을 봅니다.
+ */
+export async function judgeWithKey(
+  client: ModelClient,
+  items: Item[],
+  expectedByNo: Map<string, string>,
+  strictSpelling = false,
+  opts?: CallOptions,
+): Promise<{ results: JudgeResult[]; usage: Usage }> {
+  const payload = items.map((i) => ({
+    no: i.no,
+    prompt: i.prompt,
+    direction: i.direction,
+    written: i.written,
+    expected: expectedByNo.get(i.no) ?? "",
+  }));
+
+  const { data, usage } = await client.callJson<{ results: { no: string; correct: boolean; note: string }[] }>(
+    {
+      system: judgeKeySystem(strictSpelling),
+      text:
+        "아래는 한 답안지를 전사한 결과입니다. 문항마다 학생 답(written)이 표준 정답(expected)으로 " +
+        "인정될 수 있는지 판정하십시오.\n\n" + JSON.stringify(payload, null, 1),
+      schema: JUDGE_KEY_SCHEMA,
+    },
+    opts,
+  );
+  const results: JudgeResult[] = data.results.map((r) => ({
+    no: r.no,
+    correct: r.correct,
+    expected: expectedByNo.get(r.no) ?? "",
+    note: r.note,
+  }));
   return { results, usage };
 }
 

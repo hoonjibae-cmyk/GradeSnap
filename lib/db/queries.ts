@@ -5,6 +5,7 @@ import { normalizeGrading, type Effort } from "@/lib/grading/provider";
 import {
   keepName,
   toItemRows,
+  type ExamRefRow,
   type ItemRow,
   type ModelTrialRow,
   type Role,
@@ -79,7 +80,9 @@ export async function getSettings(db: SupabaseClient): Promise<SettingsRow> {
  * 못 읽거나 모양이 아니면 **던집니다.** 엉뚱한 모델에 돈이 나가는 것보다
  * 채점이 멈추는 편이 낫습니다 — 멈추면 보이고, 틀리게 도는 것은 안 보입니다.
  */
-export async function gradingOptions(db: SupabaseClient): Promise<{ model: string; effort: Effort }> {
+export async function gradingOptions(
+  db: SupabaseClient,
+): Promise<{ model: string; effort: Effort; useRefs: boolean }> {
   const s = await getSettings(db);
   const g = normalizeGrading(s.grading_model, s.grading_effort);
   if (!g) {
@@ -88,7 +91,52 @@ export async function gradingOptions(db: SupabaseClient): Promise<{ model: strin
         "관리 화면에서 다시 고르거나, 마이그레이션이 밀려 있는지 확인해 주십시오.",
     );
   }
-  return g;
+  /*
+    모델·강도와 달리 이 칸이 없으면 **끈 것으로 봅니다.** 없을 때의 동작이
+    "지금까지와 완전히 같음"이라 안전하고, 채점을 멈출 이유가 없습니다.
+  */
+  return { ...g, useRefs: s.use_exam_refs === true };
+}
+
+/** 시험 참조를 켜고 끕니다. 관리 화면에서만 부릅니다. */
+export async function saveUseExamRefs(db: SupabaseClient, on: boolean): Promise<void> {
+  const res = await db
+    .from("settings")
+    .update({ use_exam_refs: on, updated_at: new Date().toISOString() })
+    .eq("id", true);
+  if (res.error) throw new Error(`시험 참조 설정: ${res.error.message}`);
+}
+
+// ---------------------------------------------------------------------------
+// 시험 참조 (docs/13 §13.27)
+// ---------------------------------------------------------------------------
+
+export async function getExamRef(db: SupabaseClient, fingerprint: string): Promise<ExamRefRow | null> {
+  const res = await db.from("exam_refs").select("*").eq("fingerprint", fingerprint).maybeSingle();
+  // 표가 아직 없으면(마이그레이션 지연) 참조 없이 갑니다 — 지금까지와 같은 경로입니다.
+  if (res.error) {
+    console.error("[exam_refs]", res.error.message);
+    return null;
+  }
+  return (res.data as ExamRefRow) ?? null;
+}
+
+/**
+ * 참조를 저장합니다. **충돌이면 먼저 것을 둡니다.**
+ *
+ * 조교 둘이 같은 시험의 첫 두 장을 동시에 채점하면 둘 다 저장하러 옵니다.
+ * 나중 것으로 덮으면 반 중간에 정답 기준이 바뀝니다 — 일관성을 위해 만든
+ * 것이 일관성을 깹니다. 먼저 온 것이 남습니다.
+ */
+export async function saveExamRef(
+  db: SupabaseClient,
+  ref: Omit<ExamRefRow, "created_by" | "created_at">,
+): Promise<void> {
+  const { data: u } = await db.auth.getUser();
+  const res = await db
+    .from("exam_refs")
+    .upsert({ ...ref, created_by: u.user?.id ?? null }, { onConflict: "fingerprint", ignoreDuplicates: true });
+  if (res.error) throw new Error(`시험 참조 저장: ${res.error.message}`);
 }
 
 /** 관리자가 채점 모델을 바꿉니다. **다음 답안지부터 적용됩니다.** */
