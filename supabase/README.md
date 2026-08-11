@@ -21,6 +21,7 @@ migrations/20260810000300_trial_variant_items.sql  -- 압축을 전사/판정으
 migrations/20260811000100_trial_edge.sql        -- 실험에 '사진 해상도' 축 추가
 migrations/20260811000200_exam_refs.sql         -- 같은 시험 참조 (기본 꺼짐)
 migrations/20260811000300_self_signup.sql       -- 셀프 가입 + 관리자 승인
+migrations/20260811000400_assistant_confirm.sql -- 확정을 조교에게도 엶
 ```
 
 시험 참조를 **켜는** 것은 마이그레이션과 별개입니다. 관리 화면의 스위치를

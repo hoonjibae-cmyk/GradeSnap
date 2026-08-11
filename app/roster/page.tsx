@@ -97,7 +97,7 @@ function Roster({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
 
       {pending.length > 0 && (
         <p className="mb-4 rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 print-block">
-          ⏳ <strong>아직 확정되지 않은 답안지가 {pending.length}장 있습니다.</strong> 선생님이 검수해 확정해야
+          ⏳ <strong>아직 확정되지 않은 답안지가 {pending.length}장 있습니다.</strong> 검수해 확정해야
           명단에 들어갑니다 — <strong>지금 명단은 완성이 아닙니다.</strong>
           <span className="no-print">
             {" "}

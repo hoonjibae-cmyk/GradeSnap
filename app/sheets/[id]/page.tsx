@@ -17,11 +17,14 @@ import type { Verdict } from "@/lib/grading/types";
 import { label } from "@/lib/grading/provider";
 
 /**
- * 검수 화면 — **선생님이 확인하고 확정하는 곳**입니다.
+ * 검수 화면 — **사람이 확인하고 확정하는 곳**입니다.
  *
- * [13 §13.2](../../docs/13-phase1-plan.md)의 "선생님이 채점한다 → 선생님이
+ * [13 §13.2](../../docs/13-phase1-plan.md)의 "선생님이 채점한다 → 사람이
  * 확인한다"가 실제로 일어나는 화면이고, 여기서 고친 기록이 그대로
  * 정확도 데이터가 됩니다(`items.overturned`).
+ *
+ * 확정은 조교도 합니다(§13.33). 누가 확정했는지는 `confirmed_by`에
+ * 남으므로, 권한을 넓혀도 책임 소재는 그대로입니다.
  */
 export default function SheetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -211,7 +214,17 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
 
   if (!sheet) return <p className="p-6 text-sm text-slate-500">{err ?? "불러오는 중…"}</p>;
 
-  const canConfirm = staff.role === "teacher" || staff.role === "admin";
+  /*
+    확정은 **승인된 직원이면 누구나** 합니다. 처음에는 선생님·관리자만
+    누를 수 있었는데(§13.33), 실제로는 조교가 합니다.
+
+    막을 근거도 얇았습니다 — 조교는 이미 위 표에서 ○/✗를 전부 뒤집을 수
+    있고 오답 수가 곧 판정입니다. 마지막 단추만 잠그면 결정이 막히는 게
+    아니라 **결정이 다른 사람 이름으로 남습니다.**
+
+    권한은 DB가 봅니다(`can_confirm()`). 여기서 역할을 안 보는 것은
+    화면이 판단을 흉내내지 않기 위해서입니다.
+  */
   const confirmed = sheet.status === "confirmed";
   const v = sheet.final_verdict ?? sheet.verdict;
   const wrong = items.filter((i) => i.final_correct === false).length;
@@ -424,21 +437,14 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
             <p className="text-sm text-slate-700">
               <strong>확정됐습니다.</strong> 이 결과가 명단에 나갑니다.
             </p>
-            {canConfirm && (
-              <button
-                onClick={() => void unconfirmSheet(db, id).then(load)}
-                disabled={busy}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
-              >
-                확정 취소
-              </button>
-            )}
+            <button
+              onClick={() => void unconfirmSheet(db, id).then(load)}
+              disabled={busy}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm"
+            >
+              확정 취소
+            </button>
           </div>
-        ) : !canConfirm ? (
-          <p className="text-sm text-slate-600">
-            문항은 고칠 수 있지만 <strong>확정은 선생님이 합니다.</strong> 학생을 재시험에 남기는 결정이라
-            그렇습니다.
-          </p>
         ) : (
           <>
             <p className="mb-3 text-sm text-slate-700">
