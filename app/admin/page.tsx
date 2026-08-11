@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, Gate } from "@/components/Gate";
 import {
   allStaff,
+  countExamRefs,
   getSettings,
   deleteSheet,
   gradedBetween,
@@ -103,12 +104,15 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
   /** 계정의 Models API 응답. `null`이면 아직 안 물어봤습니다. */
   const [account, setAccount] = useState<{ id: string; name: string }[] | null>(null);
   const [accountErr, setAccountErr] = useState<string | null>(null);
+  /** 지금까지 저장된 참조 수. **켜져 있는데 0이면 아직 안 도는 것입니다.** */
+  const [refs, setRefs] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const c = await getSettings(db);
     setCfg(c);
     setModel(c.grading_model ?? "");
     setEffort(c.grading_effort ?? "");
+    setRefs(await countExamRefs(db).catch(() => null));
   }, [db]);
 
   /**
@@ -306,6 +310,27 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
             </span>
           </span>
         </label>
+        {/*
+          🔴 **켜짐만 말하는 화면은 못 믿습니다.**
+
+          이 기능은 스위치가 켜져 있는데 코드가 한 번도 안 불린 채로 며칠을
+          보냈습니다(§13.34). 그때 화면은 "켜짐"이라고 했습니다. 그래서 지금은
+          **저장된 참조 수**를 같이 내놓습니다 — 도는지 안 도는지의 증거입니다.
+        */}
+        {cfg.use_exam_refs === true && (
+          <p className="ml-6 mt-2 text-xs text-slate-500">
+            {refs === null ? (
+              <>저장된 참조를 읽지 못했습니다 — 마이그레이션(<code>20260811000200_exam_refs.sql</code>)이 밀려
+              있는지 확인해 주십시오.</>
+            ) : refs > 0 ? (
+              <>지금까지 저장된 참조 <strong className="text-slate-700">{refs}개</strong>. 시험 하나에 하나씩
+              쌓입니다.</>
+            ) : (
+              <>아직 저장된 참조가 <strong className="text-amber-700">없습니다.</strong> 다음 시험의 첫
+              깨끗한 답안지에서 만들어집니다 — 한 반을 채점한 뒤에도 0이면 알려 주십시오.</>
+            )}
+          </p>
+        )}
       </div>
     </section>
   );

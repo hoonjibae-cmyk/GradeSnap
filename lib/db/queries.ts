@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
 import { normalizeGrading, type Effort } from "@/lib/grading/provider";
+import type { RefStore } from "@/lib/grading/pipeline";
 import {
   keepName,
   toItemRows,
@@ -161,6 +162,37 @@ export async function saveExamRef(
     .from("exam_refs")
     .upsert({ ...ref, created_by: u.user?.id ?? null }, { onConflict: "fingerprint", ignoreDuplicates: true });
   if (res.error) throw new Error(`시험 참조 저장: ${res.error.message}`);
+}
+
+/**
+ * 지금까지 저장된 참조 개수. **켜져 있는데 0이면 아직 안 도는 것입니다.**
+ *
+ * 이 숫자를 화면에 내놓는 이유가 있습니다. 참조 기능은 스위치가 켜져 있는데
+ * 코드가 한 번도 안 불린 채로 며칠을 보냈습니다(§13.34). 화면이 "켜짐"만
+ * 말하면 그 상태를 아무도 눈치채지 못합니다. **동작의 증거를 보여줍니다.**
+ */
+export async function countExamRefs(db: SupabaseClient): Promise<number | null> {
+  const res = await db.from("exam_refs").select("fingerprint", { count: "exact", head: true });
+  // 표가 없으면(마이그레이션 지연) 숫자를 지어내지 않습니다.
+  if (res.error) return null;
+  return res.count ?? 0;
+}
+
+/**
+ * 채점 흐름(`judgeSheet`)이 쓰는 참조 저장소.
+ *
+ * 흐름 쪽은 표도 RLS도 몰라야 테스트할 수 있습니다. 여기가 그 경계입니다.
+ */
+export function examRefs(db: SupabaseClient): RefStore {
+  return {
+    async get(fingerprint) {
+      const row = await getExamRef(db, fingerprint);
+      return row ? { fingerprint: row.fingerprint, title: row.title, items: row.items } : null;
+    },
+    async save(ref, sourceSheet) {
+      await saveExamRef(db, { ...ref, source_sheet: sourceSheet });
+    },
+  };
 }
 
 /** 관리자가 채점 모델을 바꿉니다. **다음 답안지부터 적용됩니다.** */

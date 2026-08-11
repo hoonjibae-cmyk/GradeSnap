@@ -1,20 +1,17 @@
 import { NextResponse } from "next/server";
 import { anthropic, costUsd } from "@/lib/grading/client";
 import { compare } from "@/lib/grading/compare";
-import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
-import { judge, judgeWithKey, transcribe } from "@/lib/grading/stages";
-import { applyReference, buildReference, refFingerprint, refKey } from "@/lib/grading/reference";
-import type { JudgeResult } from "@/lib/grading/types";
+import { transcribe } from "@/lib/grading/stages";
+import { judgeSheet } from "@/lib/grading/pipeline";
 import { bearer, userClient } from "@/lib/db/client";
 import {
   claim,
   downloadPage,
-  getExamRef,
+  examRefs,
   gradingOptions,
   pagesOf,
   recordUsage,
-  saveExamRef,
   saveFailure,
   saveGrading,
 } from "@/lib/db/queries";
@@ -68,7 +65,7 @@ export async function POST(req: Request) {
   try {
     const client = anthropic();
     // 어떤 모델로 채점할지는 **관리 화면의 설정**입니다. 환경 변수가 아닙니다.
-    const opts = await gradingOptions(db);
+    const { useRefs, ...opts } = await gradingOptions(db);
     const pages = await pagesOf(db, id);
     if (!pages.length) throw new Error("사진이 없습니다. 다시 접수해 주십시오.");
 
@@ -85,11 +82,24 @@ export async function POST(req: Request) {
     // 조교가 커트라인을 적어뒀으면 그게 우선입니다 — 빨간펜이 머리말을 덮는 경우입니다.
     if (sheet.cut_line?.trim()) transcript.sheet.cutLine = sheet.cut_line.trim();
 
-    const warnings = checkDrift(transcript, undefined, pages.length);
-    const missing = missingCount(transcript);
+    /*
+      🔴 **여기가 시험 참조입니다**(docs/13 §13.27·§13.34).
 
-    const { results, usage: u2 } = await judge(client, transcript, sheet.strict_spelling, opts);
-    usage.push(u2);
+      한 반 30명이 같은 시험을 봅니다. 참조가 없으면 판정 모델이 그 시험의
+      정답을 **30번 새로 만들어냅니다.** 값도 값이지만 같은 답을 쓴 두 학생이
+      다른 판정을 받을 수 있습니다 — 절감보다 먼저 **공정성** 문제입니다.
+
+      흐름 자체는 `judgeSheet`에 있습니다. 라우트에 두면 테스트할 자리가
+      없고, 없어서 이 기능이 **한 번도 안 불린 채로 배포됐습니다**(§13.34).
+    */
+    const judged = await judgeSheet(
+      client,
+      { transcript, pages: pages.length, strictSpelling: sheet.strict_spelling, useRefs, sheetId: id, opts },
+      examRefs(db),
+    );
+    const { results, warnings, missing } = judged;
+    usage.push(...judged.usage);
+
     const cost = costUsd(usage, usage[0].model);
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
 
