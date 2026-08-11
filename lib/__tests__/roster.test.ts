@@ -115,3 +115,25 @@ describe("붙여넣을 글로 만들기", () => {
     expect(t).toContain("7. expectation → 관전");
   });
 });
+
+/*
+  2026-08-11. 중단(cancelled)을 넣으면서 확인한 것.
+
+  "확정 안 된 것은 전부 pending"이라는 규칙에 중단을 그대로 태우면,
+  **명단이 영영 완성되지 않습니다.** 사람이 일부러 멈춘 답안지는 확정될
+  일이 없는데 화면은 계속 "N장 남았다"고 말합니다.
+*/
+describe("중단한 답안지", () => {
+  it("통과에도 재시험에도 '남은 것'에도 안 들어갑니다", () => {
+    const rows = [
+      sheet({ id: "a", status: "cancelled" }),
+      sheet({ id: "b", status: "confirmed", final_verdict: "fail" }),
+      sheet({ id: "c", status: "graded" }),
+    ];
+    const { retest, passed, pending } = splitRoster(rows);
+    expect(retest.map((s) => s.id)).toEqual(["b"]);
+    expect(passed).toHaveLength(0);
+    // 'c'만 남은 것입니다. 중단한 'a'는 세지 않습니다.
+    expect(pending.map((s) => s.id)).toEqual(["c"]);
+  });
+});

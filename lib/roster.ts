@@ -27,6 +27,14 @@ export function splitRoster(sheets: SheetRow[]): Split {
   const passed: SheetRow[] = [];
   const pending: SheetRow[] = [];
   for (const s of sheets) {
+    /*
+      🔴 **중단한 것은 셋 중 어디에도 안 넣습니다.**
+
+      사람이 일부러 멈춘 답안지입니다. 확정될 일이 없으므로 "아직 확정 안 된
+      것"에 넣으면 **명단이 영영 완성되지 않습니다** — 화면은 계속 "N장
+      남았다"고 말하고, 조교는 없는 일을 찾아다니게 됩니다.
+    */
+    if (s.status === "cancelled") continue;
     if (s.status !== "confirmed") pending.push(s);
     else if (s.final_verdict === "fail") retest.push(s);
     else if (s.final_verdict === "pass") passed.push(s);

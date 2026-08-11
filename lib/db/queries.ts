@@ -13,6 +13,7 @@ import {
   type SettingsRow,
   type SheetPageRow,
   type SheetRow,
+  type SheetStatus,
   type StaffRow,
   type UsageEventRow,
   type WrongItemRow,
@@ -490,6 +491,26 @@ export async function deleteSheet(db: SupabaseClient, sheet: SheetRow): Promise<
 }
 
 /** 실패한 것을 사람이 보고 다시 돌립니다. `attempts`도 0으로 되돌립니다. */
+/**
+ * 채점을 **중단**합니다. 뒷장을 안 찍고 접수한 것을 알아챘을 때입니다.
+ *
+ * 끝난 답안지는 못 멈춥니다(`in` 목록). 채점됨·확정을 되돌리는 것은 중단이
+ * 아니라 다른 일이고, 그걸 이 단추로 하게 두면 검수한 결과가 사라집니다.
+ *
+ * 🔴 **모델 호출 자체는 못 멈춥니다.** 이미 요청이 나갔으면 그 호출은
+ * 끝까지 갑니다. 여기서 하는 일은 **그 결과를 안 쓰는 것**이고
+ * (`saveGrading`이 확인합니다), 이미 쓴 돈은 기록에 그대로 남습니다.
+ * 아직 안 집힌 것(`queued`)을 멈추면 한 푼도 안 나갑니다.
+ */
+export async function cancelSheet(db: SupabaseClient, sheetId: string): Promise<void> {
+  const res = await db
+    .from("sheets")
+    .update({ status: "cancelled", error: null })
+    .eq("id", sheetId)
+    .in("status", ["uploading", "queued", "running"]);
+  if (res.error) throw new Error(`채점 중단: ${res.error.message}`);
+}
+
 export async function retrySheet(db: SupabaseClient, sheetId: string): Promise<void> {
   const res = await db.from("sheets").update({ status: "queued", attempts: 0, error: null }).eq("id", sheetId);
   if (res.error) throw new Error(`다시 시도: ${res.error.message}`);
@@ -671,10 +692,23 @@ export interface Grading {
  * 채점 결과를 씁니다. **문항 행을 먼저 지웁니다** — 재시도로 두 번 채점되면
  * 같은 문항이 두 벌 쌓이고, 그러면 오답 개수가 두 배가 됩니다.
  */
-export async function saveGrading(db: SupabaseClient, sheetId: string, g: Grading): Promise<void> {
+/**
+ * 채점 결과를 저장합니다. **중단된 답안지면 아무것도 안 쓰고 `false`.**
+ */
+export async function saveGrading(db: SupabaseClient, sheetId: string, g: Grading): Promise<boolean> {
   // 지금 적혀 있는 이름을 먼저 봅니다 — 접수할 때 적었거나 검수에서 고친 것일 수 있습니다.
-  const cur = await db.from("sheets").select("student_name").eq("id", sheetId).maybeSingle();
-  const current = cur.data as { student_name: string } | null;
+  const cur = await db.from("sheets").select("student_name, status").eq("id", sheetId).maybeSingle();
+  const current = cur.data as { student_name: string; status: SheetStatus } | null;
+
+  /*
+    🔴 **중단된 답안지에는 결과를 안 씁니다.**
+
+    조교가 중단을 눌러도 이미 나간 모델 호출은 끝까지 갑니다. 그 결과를
+    그대로 저장하면 **중단 단추가 아무 일도 안 한 것이 됩니다** — 뒷장이
+    빠진 채로 채점된 결과가 화면에 뜨고, 조교는 자기가 멈춘 줄 압니다.
+    돈은 이미 나갔고 그건 기록에 남습니다. 여기서 막는 것은 결과입니다.
+  */
+  if (current?.status === "cancelled") return false;
 
   const del = await db.from("items").delete().eq("sheet_id", sheetId);
   if (del.error) throw new Error(`이전 채점 지우기: ${del.error.message}`);
@@ -703,6 +737,7 @@ export async function saveGrading(db: SupabaseClient, sheetId: string, g: Gradin
     })
     .eq("id", sheetId);
   if (up.error) throw new Error(`채점 결과 저장: ${up.error.message}`);
+  return true;
 }
 
 /** 판정에 관한 칸들. 커트라인만 다시 넣고 셀 때도 같은 모양이라야 합니다. */
@@ -740,5 +775,14 @@ export async function recount(
  * 되돌리면 무한히 재시도하고, 조교는 왜 안 되는지 볼 새가 없습니다.
  */
 export async function saveFailure(db: SupabaseClient, sheetId: string, message: string): Promise<void> {
-  await db.from("sheets").update({ status: "failed", error: message.slice(0, 500) }).eq("id", sheetId);
+  /*
+    **중단한 것을 실패로 덮지 않습니다.** 조교가 멈춘 뒤에 그 호출이 터지면
+    화면에 "실패"가 뜨고 「다시」 단추가 나옵니다. 다시 돌릴 이유가 없는
+    답안지에 다시 돌리라고 권하는 셈이고, 누르면 돈이 또 나갑니다.
+  */
+  await db
+    .from("sheets")
+    .update({ status: "failed", error: message.slice(0, 500) })
+    .eq("id", sheetId)
+    .neq("status", "cancelled");
 }

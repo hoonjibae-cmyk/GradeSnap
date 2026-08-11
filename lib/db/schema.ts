@@ -16,7 +16,19 @@ export type Role = "assistant" | "teacher" | "admin";
  * `uploading`이 따로 있는 이유: 행을 먼저 만들어야 사진 행이 그걸 가리킬 수
  * 있는데, 그 사이에 `queued`면 **사진 없는 답안지를 채점하러 갑니다.**
  */
-export type SheetStatus = "uploading" | "queued" | "running" | "graded" | "failed" | "confirmed";
+/**
+ * `cancelled`는 **사람이 멈춘 것**입니다. `failed`(터진 것)와 다릅니다 —
+ * 실패는 다시 돌리면 되는 일이고, 중단은 애초에 잘못 올린 일이라 대개
+ * 지우고 다시 찍습니다. 한 칸에 몰아넣으면 화면이 그 차이를 못 말합니다.
+ */
+export type SheetStatus =
+  | "uploading"
+  | "queued"
+  | "running"
+  | "cancelled"
+  | "graded"
+  | "failed"
+  | "confirmed";
 
 export interface StaffRow {
   id: string;

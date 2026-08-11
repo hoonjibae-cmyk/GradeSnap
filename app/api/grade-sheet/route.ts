@@ -103,7 +103,7 @@ export async function POST(req: Request) {
     const cost = costUsd(usage, usage[0].model);
     const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
 
-    await saveGrading(db, id, {
+    const saved = await saveGrading(db, id, {
       transcript,
       warnings,
       results,
@@ -118,6 +118,12 @@ export async function POST(req: Request) {
       costUsd: cost,
     });
 
+    /*
+      🔴 **중단됐어도 지출은 기록합니다.**
+
+      결과는 버렸지만 돈은 나갔습니다. 안 적으면 비용 화면이 실제보다 싸게
+      말하고, 그 화면으로 절감을 판단합니다. 버린 일도 쓴 돈입니다.
+    */
     await recordUsage(db, {
       kind: "grade",
       sheet_id: id,
@@ -129,7 +135,8 @@ export async function POST(req: Request) {
       ok: true,
     });
 
-    return NextResponse.json({ done: false, sheetId: id });
+    if (!saved) console.warn("[grade-sheet] 중단된 답안지라 결과를 버렸습니다", id);
+    return NextResponse.json({ done: false, sheetId: id, cancelled: !saved });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[grade-sheet]", id, message);

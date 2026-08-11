@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, Gate } from "@/components/Gate";
-import { deleteSheet, getSettings, intake, retrySheet, sheetsOn } from "@/lib/db/queries";
+import { cancelSheet, deleteSheet, getSettings, intake, retrySheet, sheetsOn } from "@/lib/db/queries";
 import { needsReview, type SheetRow, type StaffRow } from "@/lib/db/schema";
 import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
 import { pushRecent } from "@/lib/recent";
@@ -438,6 +438,7 @@ const STATUS: Record<SheetRow["status"], string> = {
   uploading: "올리는 중",
   queued: "대기",
   running: "채점 중",
+  cancelled: "중단됨",
   graded: "채점됨",
   failed: "실패",
   confirmed: "확정",
@@ -481,6 +482,32 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
   const incomplete = (s.warnings ?? []).some((w) => w.level === "incomplete");
   const noCut = s.status === "graded" && s.cut === null;
   const open = s.status === "graded" || s.status === "confirmed";
+  /** 아직 돌고 있는 것. **여기서만 멈출 수 있습니다.** */
+  const stoppable = s.status === "queued" || s.status === "running";
+
+  /*
+    중단은 되돌릴 수 없고 돈 이야기가 걸려 있어 한 번 묻습니다.
+    그리고 **묻는 말이 상태마다 달라야 합니다** — 아직 안 집힌 것은 공짜로
+    멈추고, 도는 중인 것은 모델 호출을 못 멈춥니다. 같은 문장으로 물으면
+    조교가 "중단했으니 돈도 안 나갔겠지"라고 읽습니다.
+  */
+  async function stop() {
+    const msg =
+      s.status === "queued"
+        ? "채점을 중단합니다. 아직 시작 전이라 비용은 들지 않습니다."
+        : "채점을 중단합니다.\n\n이미 시작돼서 결과는 버리지만, 지금까지 쓴 비용은 그대로 나갑니다.";
+    if (!confirm(msg)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await cancelSheet(db, s.id);
+      onChange();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function applyCut() {
     setBusy(true);
@@ -541,7 +568,20 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
               {v === "pass" ? "PASS" : "FAIL"}
             </span>
           )}
-          {s.status === "failed" && (
+          {/*
+            채점 중에 누를 수 있는 유일한 단추입니다. 조교가 뒷장을 안 찍은
+            것을 알아채는 시점이 대개 **접수 직후**라, 눈에 띄는 자리에 둡니다.
+          */}
+          {stoppable && (
+            <button
+              onClick={() => void stop()}
+              disabled={busy}
+              className="rounded border border-amber-400 px-2 py-1 text-xs font-medium text-amber-800 disabled:opacity-40"
+            >
+              중단
+            </button>
+          )}
+          {(s.status === "failed" || s.status === "cancelled") && (
             <button
               onClick={() => void retrySheet(db, s.id).then(onChange)}
               className="rounded border border-slate-300 px-2 py-1 text-xs"
@@ -549,7 +589,7 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
               다시
             </button>
           )}
-          {(s.status === "uploading" || s.status === "failed") && (
+          {(s.status === "uploading" || s.status === "failed" || s.status === "cancelled") && (
             <button
               onClick={() => confirm("이 답안지를 지웁니다.") && void deleteSheet(db, s).then(onChange)}
               className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-500"
@@ -587,6 +627,14 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
           </div>
           {err && <p className="mt-1 text-xs text-rose-700">{err}</p>}
         </div>
+      )}
+
+      {s.status === "cancelled" && (
+        <p className="mt-2 rounded-lg bg-slate-100 p-2 text-sm text-slate-700">
+          채점을 중단했습니다. <strong>이 답안지는 결과가 없습니다.</strong> 빠진 장이 있었으면{" "}
+          <strong>지우고 앞·뒤를 모두 찍어 다시 접수</strong>하십시오. 잘못 눌렀으면 「다시」로 채점을
+          다시 시작할 수 있습니다.
+        </p>
       )}
 
       {s.missing !== null && s.missing > 0 && !s.robust_to_missing && (
