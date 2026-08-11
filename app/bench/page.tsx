@@ -200,7 +200,8 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       margin: cmpBase.margin,
       costUsd: Number(s.cost_usd ?? 0),
       latencyMs: (s.token_usage ?? []).reduce((a, u) => a + u.latencyMs, 0),
-      inputTokens: (s.token_usage ?? []).reduce((a, u) => a + u.inputTokens, 0),
+      // 캐시된 프리픽스도 실재 입력입니다. 안 더하면 캐싱 배포 전후의 실행이 비교가 안 됩니다.
+      inputTokens: (s.token_usage ?? []).reduce((a, u) => a + u.inputTokens + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0), 0),
       outputTokens: (s.token_usage ?? []).reduce((a, u) => a + u.outputTokens, 0),
     };
     const trial: Run = {
@@ -215,7 +216,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       margin: t.margin,
       costUsd: Number(t.cost_usd ?? 0),
       latencyMs: t.latency_ms ?? 0,
-      inputTokens: (t.token_usage ?? []).reduce((a, u) => a + u.inputTokens, 0),
+      inputTokens: (t.token_usage ?? []).reduce((a, u) => a + u.inputTokens + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0), 0),
       outputTokens: (t.token_usage ?? []).reduce((a, u) => a + u.outputTokens, 0),
     };
     pairs.push({ sheet: s, trial: t, base, diff: diffRuns(base, trial) });
