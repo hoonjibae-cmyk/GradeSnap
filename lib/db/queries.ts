@@ -42,6 +42,30 @@ export async function me(db: SupabaseClient): Promise<StaffRow | null> {
   return (res.data as StaffRow) ?? null;
 }
 
+/**
+ * 가입 신청 — 자기 행을 **비활성 조교로** 넣습니다(docs/13 §13.31).
+ *
+ * 이 행이 곧 신청서입니다. 관리자가 People에서 켜면 승인이고,
+ * 켜기 전에는 is_staff()가 false라 아무것도 못 봅니다.
+ * RLS가 active=false·role='assistant'가 아니면 거부합니다 —
+ * 스스로 승인하거나 관리자가 되는 길은 DB가 막습니다.
+ */
+export async function requestAccess(db: SupabaseClient, name: string): Promise<void> {
+  const { data: u } = await db.auth.getUser();
+  if (!u.user) throw new Error("로그인이 필요합니다.");
+  const res = await db.from("staff").insert({
+    id: u.user.id,
+    name: name.trim(),
+    role: "assistant",
+    active: false,
+  });
+  if (res.error) {
+    // 이미 신청했으면(중복 키) 그대로 대기 화면으로 가면 됩니다.
+    if (res.error.code === "23505") return;
+    throw new Error(`가입 신청: ${res.error.message}`);
+  }
+}
+
 /** 직원 명부 전부. 끈 사람도 보입니다 — 안 보이면 다시 켤 수가 없습니다. */
 export async function allStaff(db: SupabaseClient): Promise<StaffRow[]> {
   return ok(

@@ -6,25 +6,29 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AcademyLine, Backdrop, BrandMark, ScanCard } from "@/components/Brand";
 import { Crown } from "@/components/Logo";
 import { browserClient } from "@/lib/db/client";
-import { me } from "@/lib/db/queries";
+import { me, requestAccess } from "@/lib/db/queries";
 import type { StaffRow } from "@/lib/db/schema";
 
 /**
  * 로그인 관문.
  *
- * **가입했다고 직원이 되지는 않습니다.** 로그인은 됐는데 `staff` 표에 없으면
- * 아무것도 보여주지 않습니다 — 학생 손글씨와 이름이 담긴 화면이라
- * "일단 보여주고 나중에 막자"가 안 됩니다.
+ * **가입했다고 직원이 되지는 않습니다.** 직접 가입할 수 있지만(§13.31),
+ * 그건 신청일 뿐입니다 — 관리자가 승인(People에서 켜기)하기 전에는
+ * `is_staff()`가 false라 학생 손글씨와 이름이 담긴 어떤 화면에도 못 닿습니다.
+ * "일단 보여주고 나중에 막자"가 안 되는 자리입니다.
  */
 export function Gate({ children }: { children: (db: SupabaseClient, staff: StaffRow) => React.ReactNode }) {
   // **브라우저에서만 만듭니다.** 빌드 시 미리 그려질 때 만들려 들면
   // 환경 변수가 없어 빌드가 통째로 죽습니다.
   const [db, setDb] = useState<SupabaseClient | null>(null);
   const [staff, setStaff] = useState<StaffRow | null>(null);
-  const [state, setState] = useState<"loading" | "out" | "notstaff" | "in">("loading");
+  const [state, setState] = useState<"loading" | "out" | "notstaff" | "pending" | "in">("loading");
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
+  const [name, setName] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function refresh(db: SupabaseClient) {
@@ -32,9 +36,17 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
       const { data } = await db.auth.getSession();
       if (!data.session) return setState("out");
       const s = await me(db);
-      if (!s) return setState("notstaff");
+      if (!s) {
+        // 가입 때 적은 이름을 미리 채워둡니다. 신청 화면에서 또 안 물어봐도 되게.
+        setName((data.session.user.user_metadata?.name as string) ?? "");
+        return setState("notstaff");
+      }
       setStaff(s);
-      setState("in");
+      /*
+        🔴 비활성 직원을 안으로 들이면 안 됩니다. RLS가 전부 막고 있어
+        화면마다 오류가 쏟아집니다 — 승인 대기와 사용 중지 둘 다 여기서 멈춥니다.
+      */
+      setState(s.active ? "in" : "pending");
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setState("out");
@@ -66,7 +78,65 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
     setBusy(false);
   }
 
-  // 로그인 전 세 화면은 **같은 배경 위에** 올립니다. 확인 중에만 흰 화면이
+  /**
+   * 직접 가입 → 승인 신청.
+   *
+   * Supabase 설정에 따라 두 갈래입니다.
+   *   확인 메일 꺼짐 → 바로 세션이 생기고, 그 자리에서 신청 행을 넣습니다.
+   *   확인 메일 켜짐 → 세션이 없습니다. 메일 안내를 띄우고, 확인 후
+   *                    로그인하면 notstaff 화면이 신청을 받습니다.
+   */
+  async function signUp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!db) return;
+    setBusy(true);
+    setErr(null);
+    setNotice(null);
+    try {
+      const { data, error } = await db.auth.signUp({
+        email: email.trim(),
+        password: pw,
+        // 이름을 계정에 붙여둡니다 — 확인 메일을 거쳐 돌아와도 다시 안 묻게.
+        options: { data: { name: name.trim() } },
+      });
+      if (error) throw new Error(
+        error.message.includes("already registered")
+          ? "이미 가입된 이메일입니다. 로그인해 주십시오."
+          : error.message,
+      );
+      if (data.session) {
+        await requestAccess(db, name);
+        await refresh(db);
+      } else {
+        setMode("login");
+        setNotice("확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 여기서 로그인하면 신청이 이어집니다.");
+      }
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : String(e2));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitRequest() {
+    if (!db) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await requestAccess(db, name);
+      await refresh(db);
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : String(e2));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field =
+    "block w-full rounded-xl border border-white/25 bg-white/15 px-3.5 py-2.5 text-sm text-white " +
+    "placeholder:text-white/60 focus:border-cyan-200/70 focus:bg-white/20 focus:outline-none";
+
+  // 로그인 전 화면들은 **같은 배경 위에** 올립니다. 확인 중에만 흰 화면이
   // 번쩍이면 앱이 두 개인 것처럼 보입니다.
   if (state === "loading") {
     return (
@@ -84,13 +154,69 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
         <div className="mt-8 w-full max-w-sm">
           <ScanCard>
             <p className="text-sm text-white">
-              로그인은 됐지만 <strong>직원 명부에 없습니다.</strong>
+              로그인은 됐지만 아직 <strong>직원 명부에 없습니다.</strong>
               <br />
-              <span className="text-cyan-100/80">원장님께 등록을 요청하십시오.</span>
+              <span className="text-cyan-100/80">이름을 적어 승인을 신청하면 원장님이 확인합니다.</span>
             </p>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="이름 (실명)"
+              className={`${field} mt-4`}
+            />
+            {err && (
+              <p className="mt-3 rounded-xl border border-rose-200/50 bg-rose-500/25 p-2.5 text-sm text-white">{err}</p>
+            )}
+            <button
+              onClick={() => void submitRequest()}
+              disabled={busy || !name.trim()}
+              className="mt-3 w-full rounded-xl bg-gradient-to-r from-cyan-300 to-teal-300 px-4 py-2.5 font-bold text-[#0B3A8F] shadow-lg shadow-cyan-500/20 disabled:opacity-40"
+            >
+              {busy ? "신청 중…" : "승인 신청"}
+            </button>
             <button
               onClick={() => void db?.auth.signOut()}
-              className="mt-4 w-full rounded-xl border border-white/30 px-4 py-2.5 text-sm font-medium text-white"
+              className="mt-2 w-full rounded-xl border border-white/30 px-4 py-2.5 text-sm font-medium text-white"
+            >
+              로그아웃
+            </button>
+          </ScanCard>
+        </div>
+        <div className="mt-10">
+          <AcademyLine />
+        </div>
+      </Backdrop>
+    );
+  }
+
+  if (state === "pending") {
+    return (
+      <Backdrop>
+        <BrandMark />
+        <div className="mt-8 w-full max-w-sm">
+          <ScanCard>
+            {/*
+              승인 대기와 사용 중지가 같은 화면입니다 — 굳이 안 가릅니다.
+              "당신은 잘렸습니다"를 화면이 단정할 이유가 없고, 어느 쪽이든
+              다음 행동은 같습니다: 원장님께 물어보기.
+            */}
+            <p className="text-sm text-white">
+              <strong>{staff?.name || "신청"}</strong> — 신청이 접수됐습니다.
+              <br />
+              <span className="text-cyan-100/80">
+                원장님이 승인하면 바로 쓸 수 있습니다. 이미 쓰던 계정이라면 사용이 중지된 상태이니
+                원장님께 문의하십시오.
+              </span>
+            </p>
+            <button
+              onClick={() => db && void refresh(db)}
+              className="mt-4 w-full rounded-xl bg-gradient-to-r from-cyan-300 to-teal-300 px-4 py-2.5 font-bold text-[#0B3A8F] shadow-lg shadow-cyan-500/20"
+            >
+              승인됐는지 확인
+            </button>
+            <button
+              onClick={() => void db?.auth.signOut()}
+              className="mt-2 w-full rounded-xl border border-white/30 px-4 py-2.5 text-sm font-medium text-white"
             >
               로그아웃
             </button>
@@ -104,15 +230,22 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
   }
 
   if (state === "out") {
-    const field =
-      "block w-full rounded-xl border border-white/25 bg-white/15 px-3.5 py-2.5 text-sm text-white " +
-      "placeholder:text-white/60 focus:border-cyan-200/70 focus:bg-white/20 focus:outline-none";
+    const signup = mode === "signup";
     return (
       <Backdrop>
         <BrandMark />
         <div className="mt-8 flex w-full max-w-sm justify-center">
           <ScanCard>
-            <form onSubmit={signIn} className="space-y-3">
+            <form onSubmit={signup ? signUp : signIn} className="space-y-3">
+              {signup && (
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="이름 (실명)"
+                  autoComplete="name"
+                  className={field}
+                />
+              )}
               <input
                 type="email"
                 value={email}
@@ -125,21 +258,39 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
                 type="password"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
-                placeholder="비밀번호"
-                autoComplete="current-password"
+                placeholder={signup ? "비밀번호 (6자 이상)" : "비밀번호"}
+                autoComplete={signup ? "new-password" : "current-password"}
                 className={field}
               />
+              {notice && (
+                <p className="rounded-xl border border-cyan-200/50 bg-cyan-500/25 p-2.5 text-sm text-white">{notice}</p>
+              )}
               {err && (
                 <p className="rounded-xl border border-rose-200/50 bg-rose-500/25 p-2.5 text-sm text-white">{err}</p>
               )}
               <button
                 type="submit"
-                disabled={busy || !email || !pw}
+                disabled={busy || !email || !pw || (signup && !name.trim())}
                 className="w-full rounded-xl bg-gradient-to-r from-cyan-300 to-teal-300 px-4 py-2.5 font-bold text-[#0B3A8F] shadow-lg shadow-cyan-500/20 transition disabled:opacity-40"
               >
-                {busy ? "확인 중…" : "로그인"}
+                {busy ? "확인 중…" : signup ? "가입하고 승인 신청" : "로그인"}
               </button>
+              {signup && (
+                <p className="text-xs text-cyan-100/70">
+                  가입해도 바로 쓸 수는 없습니다 — 원장님이 승인해야 화면이 열립니다.
+                </p>
+              )}
             </form>
+            <button
+              onClick={() => {
+                setMode(signup ? "login" : "signup");
+                setErr(null);
+                setNotice(null);
+              }}
+              className="mt-3 w-full text-center text-sm text-cyan-100/80 underline"
+            >
+              {signup ? "이미 계정이 있습니다 — 로그인" : "처음입니다 — 계정 만들기"}
+            </button>
           </ScanCard>
         </div>
         <div className="mt-10">

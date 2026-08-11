@@ -20,6 +20,7 @@ migrations/20260810000200_trial_variant.sql     -- 실험에 '출력 형식' 축
 migrations/20260810000300_trial_variant_items.sql  -- 압축을 전사/판정으로 나눔
 migrations/20260811000100_trial_edge.sql        -- 실험에 '사진 해상도' 축 추가
 migrations/20260811000200_exam_refs.sql         -- 같은 시험 참조 (기본 꺼짐)
+migrations/20260811000300_self_signup.sql       -- 셀프 가입 + 관리자 승인
 ```
 
 시험 참조를 **켜는** 것은 마이그레이션과 별개입니다. 관리 화면의 스위치를
@@ -35,6 +36,16 @@ update public.settings set use_exam_refs = true;
 일부러 그렇게 두었습니다(docs/13 §13.20). 관리 화면이 무엇이 빠졌는지 알려줍니다.
 
 CLI를 쓴다면 `supabase db push`도 같은 일을 합니다.
+
+## 1.5 셀프 가입이 되려면 (Supabase 설정)
+
+대시보드 → **Authentication → Sign In / Up** 에서:
+
+1. **Email 가입이 켜져 있는지** 확인합니다 (Enable email sign-ups).
+2. **Confirm email은 끄기를 권합니다.** 어차피 관리자 승인 없이는 아무것도
+   못 보므로 이중 관문이고, Supabase 기본 메일은 시간당 몇 통으로 묶여 있어
+   조교 여럿이 같은 날 가입하면 확인 메일이 안 나갑니다.
+   켜두어도 앱은 동작합니다 — 메일 확인 후 로그인하면 신청 화면이 이어집니다.
 
 ## 2. 첫 직원 넣기
 

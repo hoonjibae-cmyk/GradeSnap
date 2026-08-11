@@ -963,6 +963,18 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
 
       {made && <p className="mt-3 rounded-lg bg-emerald-50 p-2 text-sm text-emerald-900">{made}</p>}
 
+      {/*
+        직접 가입한 신청은 **꺼진 행**으로 들어옵니다(docs/13 §13.31).
+        켜는 것이 곧 승인입니다. 모르는 이름이면 켜지 말고 지우십시오 —
+        주소만 알면 누구나 가입 신청까지는 할 수 있습니다.
+      */}
+      {rows.some((r) => !r.active) && (
+        <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+          🔶 꺼진 계정 {rows.filter((r) => !r.active).length}개 — 새 <strong>가입 신청</strong>이거나 사용 중지된
+          계정입니다. 아는 사람이면 <strong>켜기 = 승인</strong>이고, 모르는 이름이면 켜지 마십시오.
+        </p>
+      )}
+
       {open && (
         <form onSubmit={create} className="mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">
           <input
