@@ -44,6 +44,22 @@ export function anthropic(): ModelClient {
 }
 
 /**
+ * 계정에서 실제로 쓸 수 있는 모델 목록. **관리 화면의 "모델 확인"이 씁니다.**
+ *
+ * 문서 페이지도 영업 담당자도 이 계정의 진실을 모릅니다 — Models API가
+ * 압니다(2026-08-11, "claude-opus-5는 없다"는 주장이 계기). 여기 나오는
+ * 목록이 이 키로 부를 수 있는 전부입니다.
+ */
+export async function listModels(): Promise<{ id: string; name: string }[]> {
+  const key = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+  if (!key) throw new Error("ANTHROPIC_API_KEY가 설정되지 않았습니다.");
+  const client = new Anthropic({ apiKey: key });
+  const out: { id: string; name: string }[] = [];
+  for await (const m of client.models.list()) out.push({ id: m.id, name: m.display_name });
+  return out;
+}
+
+/**
  * 모델 이름만 주면 알아서 그 회사 어댑터를 엽니다.
  *
  * 부르는 쪽(`/api/sheets/[id]/trial`)이 회사를 알 필요가 없어야 합니다 —
@@ -103,7 +119,13 @@ async function callJson<T>(
       latencyMs: Date.now() - t0,
       inputTokens: msg.usage.input_tokens,
       outputTokens: msg.usage.output_tokens,
-      model,
+      /*
+        **응답이 말한 모델**을 적습니다 — 우리가 보낸 문자열이 아니라.
+        "그 ID가 진짜 그 모델이냐"는 물음(2026-08-11, Anthropic 영업)에
+        우리가 보낸 값을 다시 보여주는 것은 답이 아닙니다. 서버가 무엇으로
+        처리했다고 답했는지가 답이고, 그걸 답안지마다 남깁니다.
+      */
+      model: msg.model || model,
       // 나중에 "이 답안지는 어떤 설정으로 채점됐나"를 되짚으려면 남아 있어야 합니다.
       // 칼럼을 새로 파지 않고 usage jsonb에 같이 넣습니다.
       effort: opts.effort ?? DEFAULT_EFFORT,

@@ -100,6 +100,9 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
   const [effort, setEffort] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  /** 계정의 Models API 응답. `null`이면 아직 안 물어봤습니다. */
+  const [account, setAccount] = useState<{ id: string; name: string }[] | null>(null);
+  const [accountErr, setAccountErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const c = await getSettings(db);
@@ -107,6 +110,29 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
     setModel(c.grading_model ?? "");
     setEffort(c.grading_effort ?? "");
   }, [db]);
+
+  /**
+   * **계정에 물어봅니다** — 문서도 영업 담당자도 아니고, 이 키의 Models API가
+   * 이 계정의 진실입니다. "그 모델은 없다"는 주장(2026-08-11)을 문서 링크로
+   * 다투는 대신 여기서 한 번 눌러 끝냅니다.
+   */
+  async function checkModels() {
+    setBusy(true);
+    setAccountErr(null);
+    try {
+      const { data } = await db.auth.getSession();
+      const r = await fetch("/api/models", {
+        headers: { authorization: `Bearer ${data.session?.access_token ?? ""}` },
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
+      setAccount(j.models);
+    } catch (e) {
+      setAccountErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     void load().catch((e) => onError(String(e.message ?? e)));
@@ -209,7 +235,41 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
       <p className="mt-2 text-xs text-slate-500">
         {CATALOG.find((m) => m.id === model)?.note}
         {" · "}강도는 <strong>판정 단계만</strong> 건드립니다 — 전사(글자 읽기)는 안 변합니다.
+        {" · "}
+        <button onClick={() => void checkModels()} disabled={busy} className="underline disabled:opacity-40">
+          계정에서 모델 확인
+        </button>
       </p>
+
+      {accountErr && (
+        <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">{accountErr}</p>
+      )}
+      {account && (
+        <div className="mt-2 rounded border border-slate-300 bg-slate-50 p-2 text-xs">
+          {account.some((m) => m.id === cfg.grading_model) ? (
+            <p className="text-emerald-800">
+              ✓ 지금 설정(<code>{cfg.grading_model}</code>)이 <strong>이 계정의 모델 목록에 있습니다</strong> —{" "}
+              {account.find((m) => m.id === cfg.grading_model)?.name}. Models API 응답이라 문서보다 이쪽이
+              계정의 진실입니다.
+            </p>
+          ) : (
+            <p className="font-medium text-rose-800">
+              🔴 지금 설정(<code>{cfg.grading_model}</code>)이 계정 모델 목록에 <strong>없습니다.</strong> 위에서
+              목록에 있는 모델로 바꾸고, support.claude.com 에 서면 확인을 요청하십시오.
+            </p>
+          )}
+          <details className="mt-1">
+            <summary className="cursor-pointer text-slate-600">이 계정이 부를 수 있는 모델 {account.length}개</summary>
+            <ul className="mt-1 list-disc pl-5 text-slate-600">
+              {account.map((m) => (
+                <li key={m.id}>
+                  <code>{m.id}</code> — {m.name}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      )}
 
       {dirty && (
         <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
