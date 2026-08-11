@@ -28,7 +28,18 @@ export default function HelpPage() {
         <h1 className="mt-1 text-2xl font-bold">GradeSnap 사용 안내</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
           답안지를 찍으면 채점됩니다. <strong className="text-slate-900">다만 최종 판단은 사람이 합니다</strong> —
-          이 프로그램은 읽고 세는 일을 대신할 뿐이고, 학생을 재시험에 남길지는 <b>확인한 사람이 확정합니다.</b>
+          이 프로그램은 읽고 세는 일을 대신할 뿐이고, 통과 여부는 <b>확인한 사람이 확정합니다.</b>
+        </p>
+        {/*
+          범위를 맨 위에 답니다. 아래 어딘가에 적어두면 "찍으면 채점된다"만
+          읽고 본 시험 답안지를 올립니다. **안 쓰는 자리가 쓰는 자리보다
+          많은 도구**라, 어디에 쓰는지부터 말해야 합니다.
+        */}
+        <p className="mt-3 rounded-lg border border-slate-300 bg-white p-3 text-sm leading-relaxed text-slate-700">
+          <b>쓰는 자리는 하나입니다 — 재시험.</b> 학생이 남아서 보는 재시험 답안지만 올립니다.
+          <br />
+          클리닉 본 시험은 학생들끼리 바꿔 채점하고, 인클래스 테스트는 담당 선생님이 채점합니다.{" "}
+          <b>그 답안지는 프로그램에 올리지 않습니다.</b>
         </p>
       </header>
 
@@ -72,9 +83,10 @@ export default function HelpPage() {
         </Note>
       </Section>
 
-      <Section n={3} title="접수 — 하루 종일 여기서 합니다">
+      <Section n={3} title="접수 — 재시험 답안지를 받는 자리">
         <p>
-          한 반을 모아서 한꺼번에 돌리는 게 아닙니다. <b>학생이 내면 그 자리에서 찍고 접수합니다.</b>
+          여러 명을 모아서 한꺼번에 돌리는 게 아닙니다. <b>재시험을 마친 학생이 내면 그 자리에서 찍고
+          접수합니다.</b>
         </p>
         <ol className="list-decimal space-y-1 pl-5">
           <li>맨 위 날짜가 오늘인지 봅니다.</li>
