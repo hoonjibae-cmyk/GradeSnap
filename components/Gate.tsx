@@ -16,14 +16,24 @@ import type { StaffRow } from "@/lib/db/schema";
  * 그건 신청일 뿐입니다 — 관리자가 승인(People에서 켜기)하기 전에는
  * `is_staff()`가 false라 학생 손글씨와 이름이 담긴 어떤 화면에도 못 닿습니다.
  * "일단 보여주고 나중에 막자"가 안 되는 자리입니다.
+ *
+ * `signup`은 `/signup`에서만 켭니다 — 링크를 받고 들어온 사람에게 가입 칸을
+ * 펼쳐 놓는 용도입니다. 주소를 나눠주려면 누를 곳이 아니라 **열자마자 그
+ * 화면**이어야 합니다(§13.32).
  */
-export function Gate({ children }: { children: (db: SupabaseClient, staff: StaffRow) => React.ReactNode }) {
+export function Gate({
+  signup: startSignup = false,
+  children,
+}: {
+  signup?: boolean;
+  children: (db: SupabaseClient, staff: StaffRow) => React.ReactNode;
+}) {
   // **브라우저에서만 만듭니다.** 빌드 시 미리 그려질 때 만들려 들면
   // 환경 변수가 없어 빌드가 통째로 죽습니다.
   const [db, setDb] = useState<SupabaseClient | null>(null);
   const [staff, setStaff] = useState<StaffRow | null>(null);
   const [state, setState] = useState<"loading" | "out" | "notstaff" | "pending" | "in">("loading");
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup">(startSignup ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [name, setName] = useState("");
@@ -180,6 +190,7 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
             >
               로그아웃
             </button>
+            <HelpLink />
           </ScanCard>
         </div>
         <div className="mt-10">
@@ -220,6 +231,8 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
             >
               로그아웃
             </button>
+            {/* 승인을 기다리는 동안 읽어두라고 여기에도 답니다 — 대기 화면이 가장 심심한 자리입니다. */}
+            <HelpLink />
           </ScanCard>
         </div>
         <div className="mt-10">
@@ -305,6 +318,7 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
               <br />
               모든 사용은 로그(시각·건수·비용)로 기록·관리되고 관리자가 확인합니다.
             </p>
+            <HelpLink />
           </ScanCard>
         </div>
         <div className="mt-10">
@@ -315,6 +329,20 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
   }
 
   return <>{children(db!, staff!)}</>;
+}
+
+/**
+ * 로그인 전 화면에 다는 안내 링크.
+ *
+ * **`/help`는 로그인 없이 열립니다.** 처음 오는 조교는 계정도 승인도 없는
+ * 상태로 안내를 읽어야 하고, 안내에는 학생 것이 한 글자도 없습니다.
+ */
+function HelpLink() {
+  return (
+    <a href="/help" className="mt-3 block text-center text-xs text-cyan-100/70 underline">
+      처음 쓰십니까? 사용 안내 보기
+    </a>
+  );
 }
 
 const ROLE_LABEL: Record<StaffRow["role"], string> = { assistant: "조교", teacher: "선생님", admin: "관리자" };
@@ -343,6 +371,7 @@ export function Bar({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           { href: "/admin", label: "관리" },
         ]
       : []),
+    { href: "/help", label: "안내" },
   ];
   // 답안지 상세(/sheets/…)에서는 접수를 현재 위치로 봅니다 — 거기서 넘어온 화면입니다.
   const here = (href: string) => (href === "/" ? path === "/" || path.startsWith("/sheets") : path.startsWith(href));
