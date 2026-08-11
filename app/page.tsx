@@ -9,6 +9,7 @@ import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
 import { pushRecent } from "@/lib/recent";
 import { describeGrading } from "@/lib/grading/provider";
 import { describeWait, medianSeconds, waitSeconds } from "@/lib/queue";
+import { readJson } from "@/lib/http";
 
 /**
  * 접수 화면 — 조교가 하루 종일 열어두는 곳입니다.
@@ -68,7 +69,7 @@ function Intake({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             body: JSON.stringify(sheetId ? { sheetId } : {}),
           });
           sheetId = undefined; // 첫 판만 지정하고, 그다음부터는 떠도는 것을 집습니다.
-          const j = await r.json();
+          const j = await readJson(r);
           if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
           void refresh().catch(() => {});
           if (j.done) return;
@@ -491,7 +492,7 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
         headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
         body: JSON.stringify({ cutLine: cut }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
       onChange();
     } catch (e) {

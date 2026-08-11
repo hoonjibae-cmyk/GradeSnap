@@ -15,6 +15,7 @@ import {
 import type { ItemRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import type { Verdict } from "@/lib/grading/types";
 import { label } from "@/lib/grading/provider";
+import { readJson } from "@/lib/http";
 
 /**
  * 검수 화면 — **사람이 확인하고 확정하는 곳**입니다.
@@ -166,7 +167,7 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
         headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
         body: JSON.stringify(cutLine ? { cutLine } : {}),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
       await load();
     },

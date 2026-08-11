@@ -19,6 +19,7 @@ import {
   usageBetween,
   type RetentionStatus,
 } from "@/lib/db/queries";
+import { readJson } from "@/lib/http";
 import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
 import { FIXED_INPUT_PER_PAGE, imageTokens, split } from "@/lib/tokens";
 import { breakdown, edgeFactor, krw, project, saving } from "@/lib/cost";
@@ -128,7 +129,7 @@ function Grading({ db, onError }: { db: SupabaseClient; onError: (m: string) => 
       const r = await fetch("/api/models", {
         headers: { authorization: `Bearer ${data.session?.access_token ?? ""}` },
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
       setAccount(j.models);
     } catch (e) {
@@ -955,7 +956,7 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
         headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
         body: JSON.stringify(form),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
       setMade(`${form.email} 계정을 만들었습니다. 비밀번호를 본인에게 직접 전달하십시오.`);
       setForm({ email: "", password: "", name: "", role: "assistant" });
@@ -1106,7 +1107,7 @@ function Retention({ db, onError }: { db: SupabaseClient; onError: (m: string) =
     try {
       const { data } = await db.auth.getSession();
       const r = await fetch("/api/retention", { headers: { authorization: `Bearer ${data.session?.access_token ?? ""}` } });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
       setDone(j.deleted === 0 ? "지울 사진이 없었습니다." : `사진 ${j.deleted}장을 지웠습니다.`);
       await load();

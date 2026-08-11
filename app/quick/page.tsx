@@ -6,6 +6,7 @@ import type { GradeResponse } from "@/app/api/grade/route";
 import { Bar, Gate } from "@/components/Gate";
 import type { StaffRow } from "@/lib/db/schema";
 import { prepareImage, rotateBy, type PreparedImage } from "@/lib/image";
+import { readJson } from "@/lib/http";
 
 /**
  * 빠른 시험 — 한 학생분을 **저장하지 않고** 채점해 봅니다.
@@ -62,7 +63,7 @@ function Quick({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           cutLineOverride: cutOverride,
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
       setRes(j as GradeResponse);
     } catch (e) {

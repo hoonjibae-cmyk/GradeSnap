@@ -8,6 +8,7 @@ import type { ItemRow, ModelTrialRow, SheetRow, StaffRow } from "@/lib/db/schema
 import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
 import { CATALOG, effortLabel, info, NO_EFFORT, takesEffort } from "@/lib/grading/provider";
 import { markHidden, oddChars } from "@/lib/invisible";
+import { readJson } from "@/lib/http";
 import { compare } from "@/lib/grading/compare";
 import { EDGES, STORED_EDGE, tokenFactor } from "@/lib/grading/resize";
 
@@ -116,7 +117,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
       body: JSON.stringify({ model, effort: effortKey, variant, edge }),
     });
-    const j = await r.json();
+    const j = (await readJson(r)) as { setup?: boolean; error?: string } | null;
     if (j?.setup) throw new SetupError(j?.error ?? "설정이 덜 됐습니다.");
     if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
   }
