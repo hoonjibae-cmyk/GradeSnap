@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { CATALOG, costUsd, ids, info, knownPrice, normalizeGrading } from "@/lib/grading/provider";
+import {
+  CATALOG,
+  costUsd,
+  describeGrading,
+  effortLabel,
+  effortToSend,
+  ids,
+  info,
+  knownPrice,
+  NO_EFFORT,
+  normalizeGrading,
+  takesEffort,
+} from "@/lib/grading/provider";
 import type { Usage } from "@/lib/grading/types";
 
 const use = (input: number, output: number): Usage => ({
@@ -125,5 +137,53 @@ describe("캐시 단가", () => {
 
   it("옛 기록(캐시 칸 없음)은 예전 그대로 계산된다", () => {
     expect(costUsd([u({ inputTokens: 1_000_000 })], "claude-opus-5")).toBeCloseTo(5);
+  });
+});
+
+/*
+  2026-08-11. 값싼 모델을 재보려고 Haiku 4.5를 골랐더니 한 장도 안 돌았습니다.
+
+    400 invalid_request_error
+    "This model does not support the effort parameter."
+
+  모든 모델에 `output_config.effort`를 보내고 있었습니다. **값싼 모델을
+  재보려고 만든 화면인데 값싼 모델만 못 돌리는** 상태였고, 화면에는
+  "모델이 스키마를 못 맞췄을 수도"라고 떠서 모델 탓으로 읽혔습니다.
+*/
+describe("사고 강도를 보낼 모델인지", () => {
+  it("Haiku 4.5에는 안 보냅니다", () => {
+    expect(takesEffort("claude-haiku-4-5")).toBe(false);
+    expect(effortToSend("claude-haiku-4-5", "high", "low")).toBeNull();
+  });
+
+  it("Opus·Sonnet에는 보냅니다", () => {
+    expect(effortToSend("claude-opus-5", "high", "low")).toBe("high");
+    expect(effortToSend("claude-sonnet-5", undefined, "low")).toBe("low");
+  });
+
+  it("`null`은 '보내지 마라'입니다 — 기본값으로 메우지 않습니다", () => {
+    expect(effortToSend("claude-opus-5", null, "low")).toBeNull();
+  });
+
+  it("모르는 모델에는 안 보냅니다 — 400보다 기본값으로 도는 쪽이 낫습니다", () => {
+    expect(effortToSend("claude-opus-9", "high", "low")).toBeNull();
+  });
+
+  it("목록의 모든 모델이 받는지 여부를 밝혀 둡니다", () => {
+    for (const m of CATALOG) expect(typeof m.takesEffort).toBe("boolean");
+  });
+});
+
+describe("강도 표기", () => {
+  it("안 보낸 것을 강도가 있는 것처럼 적지 않습니다", () => {
+    expect(effortLabel(null)).toBe("강도 없음");
+    expect(effortLabel(undefined)).toBe("강도 없음");
+    expect(effortLabel(NO_EFFORT)).toBe("강도 없음");
+    expect(effortLabel("low")).toBe("low");
+  });
+
+  it("설정에 강도가 적혀 있어도 안 받는 모델이면 그렇게 말합니다", () => {
+    expect(describeGrading("claude-haiku-4-5", "low")).toBe("Haiku 4.5 · 강도 없음");
+    expect(describeGrading("claude-opus-5", "low")).toBe("Opus 5 · low");
   });
 });

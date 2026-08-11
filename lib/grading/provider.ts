@@ -20,7 +20,14 @@ export type Variant = (typeof VARIANTS)[number];
 
 export interface CallOptions {
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  /**
+   * 사고 강도. **`null`은 "보내지 마라"입니다** — 기본값으로 메우지 않습니다.
+   *
+   * 강도를 안 받는 모델이 있습니다(`takesEffort`). 그런 모델에 보내면 400으로
+   * 거절당하고, 값을 지어내 보내면 화면이 말하는 조건과 실제로 돈 조건이
+   * 갈립니다. 비교하려고 만든 도구에서 그건 가장 나쁜 종류의 오차입니다.
+   */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max" | null;
   /**
    * 기본은 켬. 실측에서 전사 단계는 사고를 켜도 출력 토큰이 그대로였습니다
    * (adaptive가 알아서 안 씁니다). 마크 판독처럼 따져야 하는 단계에는 필요합니다.
@@ -78,6 +85,18 @@ export interface ModelInfo {
    * 단가가 바뀌거나 새 모델을 넣을 때 고치는 곳은 여기 한 군데입니다.
    */
   price: [number, number] | null;
+  /**
+   * 사고 강도(`output_config.effort`)를 받는 모델인가.
+   *
+   * 🔴 **안 받는 모델에 보내면 400입니다.** 2026-08-11에 Haiku 4.5로 실험을
+   * 돌리다 그대로 맞았습니다:
+   *
+   * > `400 invalid_request_error: This model does not support the effort parameter.`
+   *
+   * 새 모델을 넣을 때는 **모른다고 `true`로 두지 마십시오.** 한 번 돌려보고
+   * 적으면 됩니다 — 틀리면 그 모델은 아예 안 돌아갑니다.
+   */
+  takesEffort: boolean;
 }
 
 /**
@@ -93,6 +112,7 @@ export const CATALOG: ModelInfo[] = [
     provider: "anthropic",
     note: "입력 5 / 출력 25 — 기준",
     price: [5.0, 25.0],
+    takesEffort: true,
   },
   {
     id: "claude-sonnet-5",
@@ -100,13 +120,15 @@ export const CATALOG: ModelInfo[] = [
     provider: "anthropic",
     note: "입력 3 / 출력 15 — Opus의 60%",
     price: [3.0, 15.0],
+    takesEffort: true,
   },
   {
     id: "claude-haiku-4-5",
     label: "Haiku 4.5",
     provider: "anthropic",
-    note: "입력 1 / 출력 5 — Opus의 20%",
+    note: "입력 1 / 출력 5 — Opus의 20%. 🔴 사고 강도를 안 받습니다",
     price: [1.0, 5.0],
+    takesEffort: false,
   },
   /*
     GPT는 **실험용으로만** 열어둡니다. 실제 채점을 이쪽으로 돌리려면
@@ -120,6 +142,7 @@ export const CATALOG: ModelInfo[] = [
     provider: "openai",
     note: "입력 5 / 출력 30 — Opus의 115%. 값이 아니라 성능을 보려는 자리",
     price: [5.0, 30.0],
+    takesEffort: true,
   },
   {
     id: "gpt-5.6-terra",
@@ -127,6 +150,7 @@ export const CATALOG: ModelInfo[] = [
     provider: "openai",
     note: "입력 2 / 출력 12 — Opus의 46%",
     price: [2.0, 12.0],
+    takesEffort: true,
   },
   {
     id: "gpt-5.6-luna",
@@ -134,6 +158,7 @@ export const CATALOG: ModelInfo[] = [
     provider: "openai",
     note: "입력 0.2 / 출력 1.2 — Opus의 5%",
     price: [0.2, 1.2],
+    takesEffort: true,
   },
 ];
 
@@ -165,15 +190,56 @@ export const info = (model: string): ModelInfo | undefined => CATALOG.find((m) =
 export const label = (model: string): string => info(model)?.label ?? model;
 
 /**
+ * 이 모델에 사고 강도를 보내도 되는가. **모르는 모델이면 안 보냅니다.**
+ *
+ * 안 보내면 모델 기본값으로 돌아 결과가 나오고, 잘못 보내면 400으로 아무
+ * 결과도 안 나옵니다. 모를 때 택할 쪽은 정해져 있습니다.
+ */
+export const takesEffort = (model: string): boolean => info(model)?.takesEffort ?? false;
+
+/**
+ * 실제로 API에 보낼 강도. **`null`이면 파라미터를 아예 안 넣습니다.**
+ *
+ * 판단이 세 갈래라 어댑터 안에 삼항으로 두면 조용히 틀립니다 —
+ * 모델이 안 받거나, 부르는 쪽이 일부러 안 보내려 하거나(`null`),
+ * 아무 말이 없거나(`undefined` → 기본값).
+ */
+export function effortToSend(
+  model: string,
+  requested: CallOptions["effort"],
+  fallback: Effort,
+): Effort | null {
+  if (!takesEffort(model)) return null;
+  if (requested === null) return null;
+  return requested ?? fallback;
+}
+
+/** 실제로 보낸 강도를 사람 말로. `null`은 "안 보냈다"입니다. */
+export const effortLabel = (effort: string | null | undefined): string =>
+  effort && effort !== NO_EFFORT ? effort : "강도 없음";
+
+/**
+ * "강도를 안 보냄"을 뜻하는 저장값.
+ *
+ * `model_trials.effort`가 `not null`이라 빈칸을 못 씁니다. 그렇다고 안 보낸
+ * 실험에 `high`를 적어두면 **화면이 돌지도 않은 조건을 말합니다.**
+ */
+export const NO_EFFORT = "none";
+
+/**
  * 사람이 읽는 한 줄: `Opus 5 · low`.
  *
  * **모양이 아니면 `null`입니다.** 조교 화면에 "지금 이걸로 채점됩니다"라고
  * 적는 문구라, 못 읽었을 때 기본값을 적으면 실제로 도는 것과 다른 이름이
  * 걸립니다.
+ *
+ * 강도를 안 받는 모델은 설정에 강도가 적혀 있어도 **"강도 없음"이라고
+ * 말합니다.** 저장된 값이 아니라 실제로 나가는 값을 적는 자리입니다.
  */
 export function describeGrading(model: unknown, effort: unknown): string | null {
   const g = normalizeGrading(model, effort);
-  return g && `${label(g.model)} · ${g.effort}`;
+  if (!g) return null;
+  return `${label(g.model)} · ${takesEffort(g.model) ? g.effort : "강도 없음"}`;
 }
 
 /**

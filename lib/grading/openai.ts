@@ -45,7 +45,9 @@ async function callJson<T>(
   if (!model) throw new Error("OpenAI 호출에 모델이 지정되지 않았습니다.");
   // 사고를 끈 호출은 `none`으로 옮깁니다. 강도 이름(low·medium·high·xhigh·max)은
   // 양쪽이 같은 낱말을 쓰므로 그대로 넘깁니다.
-  const effort = opts.thinking === false ? "none" : (opts.effort ?? "low");
+  // `effort: null`("보내지 마라")도 여기서는 `none`입니다 — 이쪽 API는 빼는
+  // 대신 `none`을 받습니다.
+  const effort = opts.thinking === false || opts.effort === null ? "none" : (opts.effort ?? "low");
 
   const content: OpenAI.Responses.ResponseInputContent[] = [
     ...(req.images ?? []).map(

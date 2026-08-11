@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CATALOG, clientFor, costUsd, info } from "@/lib/grading/client";
+import { CATALOG, clientFor, costUsd, info, takesEffort, NO_EFFORT } from "@/lib/grading/client";
 import { compare } from "@/lib/grading/compare";
 import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { mergeTranscripts } from "@/lib/grading/merge";
@@ -14,8 +14,14 @@ import { downscale } from "@/lib/grading/downscale";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-/** 실험에 쓸 수 있는 조합. 아무 문자열이나 받으면 오타로 돈이 나갑니다. */
-const EFFORTS = ["low", "medium", "high"] as const;
+/**
+ * 실험에 쓸 수 있는 조합. 아무 문자열이나 받으면 오타로 돈이 나갑니다.
+ *
+ * `none`은 **강도를 아예 안 보내는 조건**입니다. Haiku 4.5처럼 강도를 안 받는
+ * 모델이 있어서(400) 필요하고, 받는 모델에서도 "기본값으로 돌면 어떤가"를
+ * 재볼 수 있는 실제 조건입니다.
+ */
+const EFFORTS = ["low", "medium", "high", NO_EFFORT] as const;
 
 
 /**
@@ -93,7 +99,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ ok: false, setup: true, error: message }, { status: 400 });
   }
 
-  const opts: CallOptions = { model, effort: effort as CallOptions["effort"], variant: variant as Variant };
+  /*
+    강도를 안 받는 모델이면 **화면이 뭘 골랐든 안 보냅니다.** 그리고 기록에도
+    안 보냈다고 적습니다(`NO_EFFORT`) — 실제로 돈 조건과 표에 적힌 조건이
+    갈리면 이 화면은 비교 도구가 아니라 오해 생성기가 됩니다.
+  */
+  const sent = effort === NO_EFFORT || !takesEffort(model) ? null : (effort as CallOptions["effort"]);
+  const recorded = sent ?? NO_EFFORT;
+  const opts: CallOptions = { model, effort: sent, variant: variant as Variant };
   const t0 = Date.now();
 
   try {
@@ -132,7 +145,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await saveTrial(db, {
       sheet_id: id,
       model,
-      effort,
+      effort: recorded,
       variant,
       edge,
       transcript,
@@ -157,7 +170,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       cost_usd: cost,
       latency_ms: Date.now() - t0,
       model,
-      effort,
+      effort: recorded,
       ok: true,
     });
 
@@ -171,7 +184,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await saveTrial(db, {
         sheet_id: id,
         model,
-        effort,
+        effort: recorded,
         variant,
         edge,
         transcript: null,
@@ -198,7 +211,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       cost_usd: null,
       latency_ms: Date.now() - t0,
       model,
-      effort,
+      effort: recorded,
       ok: false,
     });
     return NextResponse.json({ ok: false, error: message });

@@ -6,7 +6,7 @@ import { Bar, Gate } from "@/components/Gate";
 import { getSettings, itemsFor, sheetsOn, trialsOn } from "@/lib/db/queries";
 import type { ItemRow, ModelTrialRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import { bias, diffRuns, pct, summarize, type Diff, type Run } from "@/lib/bench";
-import { CATALOG, info } from "@/lib/grading/provider";
+import { CATALOG, effortLabel, info, NO_EFFORT, takesEffort } from "@/lib/grading/provider";
 import { markHidden, oddChars } from "@/lib/invisible";
 import { compare } from "@/lib/grading/compare";
 import { EDGES, STORED_EDGE, tokenFactor } from "@/lib/grading/resize";
@@ -99,12 +99,22 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     void load().catch((e) => setErr(String(e.message ?? e)));
   }, [load]);
 
+  /*
+    🔴 **강도를 안 받는 모델이 있습니다**(Haiku 4.5 — 보내면 400).
+
+    그런 모델을 골랐으면 화면의 강도 선택은 뜻이 없습니다. 보내는 값과
+    실험 기록에 남는 값과 아래 표를 거르는 값이 **전부 같아야** 합니다.
+    하나라도 어긋나면 돌려놓고도 "안 돌려본 것"으로 계속 남습니다.
+  */
+  const noEffort = !takesEffort(model);
+  const effortKey = noEffort ? NO_EFFORT : effort;
+
   async function runOne(sheetId: string) {
     const { data } = await db.auth.getSession();
     const r = await fetch(`/api/sheets/${sheetId}/trial`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
-      body: JSON.stringify({ model, effort, variant, edge }),
+      body: JSON.stringify({ model, effort: effortKey, variant, edge }),
     });
     const j = await r.json();
     if (j?.setup) throw new SetupError(j?.error ?? "설정이 덜 됐습니다.");
@@ -145,7 +155,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     // 형식·해상도도 조건입니다. 안 걸러내면 지난 실험과 이번 실험이 섞입니다.
     const v = t.variant ?? "full";
     const e = t.edge ?? null;
-    if (t.model === model && t.effort === effort && v === variant && e === edge && !latest.has(t.sheet_id)) {
+    if (t.model === model && t.effort === effortKey && v === variant && e === edge && !latest.has(t.sheet_id)) {
       latest.set(t.sheet_id, t);
     }
   }
@@ -190,7 +200,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
     const cmpBase = compare(sysResults, { wrong: [], passFail: "unmarked" }, cutText, 2, s.missing ?? 0);
     const base: Run = {
       model: baseUsage?.model ?? "claude-opus-5",
-      effort: baseUsage?.effort ?? "high",
+      effort: baseUsage?.effort ?? NO_EFFORT,
       items: rows.map((i) => ({ no: i.no, written: i.written })),
       results: sysResults,
       cut: cmpBase.cut,
@@ -308,15 +318,20 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           <label className="text-sm">
             <span className="block text-slate-700">사고 강도</span>
             <select
-              value={effort}
+              value={noEffort ? NO_EFFORT : effort}
+              disabled={noEffort}
               onChange={(e) => setEffort(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+              className="mt-1 rounded-lg border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-100 disabled:text-slate-400"
             >
-              {EFFORTS.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
+              {noEffort ? (
+                <option value={NO_EFFORT}>강도 없음</option>
+              ) : (
+                EFFORTS.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))
+              )}
             </select>
           </label>
           <label className="text-sm">
@@ -395,7 +410,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           )}
           {pairs.length > 0 && (
             <span className="ml-2">
-              · 기준은 {pairs[0].base.model} · {pairs[0].base.effort}
+              · 기준은 {pairs[0].base.model} · {effortLabel(pairs[0].base.effort)}
             </span>
           )}
         </p>
@@ -516,7 +531,7 @@ function Bench({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
             <p className="mt-2 rounded border border-rose-300 bg-rose-50 p-2 text-xs text-rose-900">
               🔴 <strong>이 비용 비율은 지금 대비 절감액이 아닙니다.</strong> 기준이{" "}
               <strong>
-                {baseSetting.model} · {baseSetting.effort}
+                {baseSetting.model} · {effortLabel(baseSetting.effort)}
               </strong>
               인데, 지금 실제 채점은{" "}
               <strong>

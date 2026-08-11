@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { openai } from "./openai";
-import { CATALOG, info, type CallOptions, type JsonRequest, type ModelClient } from "./provider";
+import { CATALOG, effortToSend, info, type CallOptions, type JsonRequest, type ModelClient } from "./provider";
 import type { Usage } from "./types";
 
-export { costUsd, knownPrice, CATALOG, info } from "./provider";
+export { costUsd, knownPrice, CATALOG, info, takesEffort, effortLabel, NO_EFFORT } from "./provider";
 export type { CallOptions, ModelClient, ModelInfo, Provider } from "./provider";
 
 /**
@@ -25,7 +25,7 @@ export type { CallOptions, ModelClient, ModelInfo, Provider } from "./provider";
  */
 export const DEFAULT_MODEL = "claude-opus-5";
 /** 강도는 **판정 단계만** 건드립니다 — 전사는 안 변합니다(docs/12 §12.7). */
-export const DEFAULT_EFFORT = "low";
+export const DEFAULT_EFFORT = "low" as const;
 
 /**
  * 고해상도 상한. 답안 한 칸이 40~80px 높이가 되므로 여기서 더 줄이면 연필이 안 읽힙니다.
@@ -78,6 +78,17 @@ async function callJson<T>(
   opts: CallOptions = {},
 ): Promise<{ data: T; usage: Usage }> {
   const model = opts.model ?? DEFAULT_MODEL;
+  /*
+    🔴 **강도를 안 받는 모델에는 안 보냅니다.**
+
+    2026-08-11, Haiku 4.5로 실험을 돌리다 그대로 맞았습니다:
+    `400 This model does not support the effort parameter.` 값싼 모델을
+    재보려고 만든 화면인데 값싼 모델이 아예 안 돌아갔습니다.
+
+    `null`은 "일부러 안 보냄"이고 `undefined`는 "안 정함"입니다. 둘을 같이
+    다루면 안 보내려고 null을 넣은 자리에 기본값이 채워집니다.
+  */
+  const effort = effortToSend(model, opts.effort, DEFAULT_EFFORT);
   const content: Anthropic.ContentBlockParam[] = [
     ...(req.images ?? []).map(
       (im): Anthropic.ContentBlockParam => ({
@@ -105,7 +116,7 @@ async function callJson<T>(
     messages: [{ role: "user", content }],
     ...(opts.thinking === false ? { thinking: { type: "disabled" as const } } : {}),
     output_config: {
-      effort: opts.effort ?? DEFAULT_EFFORT,
+      ...(effort ? { effort } : {}),
       format: { type: "json_schema", schema: req.schema as Record<string, unknown> },
     },
   });
@@ -128,7 +139,9 @@ async function callJson<T>(
       model: msg.model || model,
       // 나중에 "이 답안지는 어떤 설정으로 채점됐나"를 되짚으려면 남아 있어야 합니다.
       // 칼럼을 새로 파지 않고 usage jsonb에 같이 넣습니다.
-      effort: opts.effort ?? DEFAULT_EFFORT,
+      // **보낸 값만 적습니다** — 안 보냈으면 빈칸입니다. 채워두면 나중에
+      // 되짚는 사람이 돌지도 않은 조건을 믿습니다.
+      ...(effort ? { effort } : {}),
       // 캐시가 걸린 만큼 input_tokens에서 빠져서 옵니다. 안 적으면 비용이 거짓말합니다.
       cacheRead: msg.usage.cache_read_input_tokens ?? 0,
       cacheWrite: msg.usage.cache_creation_input_tokens ?? 0,
