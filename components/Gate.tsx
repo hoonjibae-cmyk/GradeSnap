@@ -291,6 +291,20 @@ export function Gate({ children }: { children: (db: SupabaseClient, staff: Staff
             >
               {signup ? "이미 계정이 있습니다 — 로그인" : "처음입니다 — 계정 만들기"}
             </button>
+
+            {/*
+              업무용 고지 + 기록 고지. 뒤쪽이 법적으로 더 중요합니다 —
+              직원의 사용 기록을 관리자가 보는 시스템이므로(§13.17), 쓰기
+              전에 알렸다는 사실이 남아야 합니다(docs/14 §14.6 ⑦).
+              로그인할 때마다 지나가는 자리라 "몰랐다"가 성립하지 않습니다.
+            */}
+            <p className="mt-4 border-t border-white/15 pt-3 text-center text-xs leading-relaxed text-cyan-100/70">
+              이 시스템은 <strong className="text-white">목동유쌤영어학원 업무용</strong>입니다.
+              <br />
+              학생 답안지 채점 외의 용도로 사용할 수 없으며,
+              <br />
+              모든 사용은 로그(시각·건수·비용)로 기록·관리되고 관리자가 확인합니다.
+            </p>
           </ScanCard>
         </div>
         <div className="mt-10">
