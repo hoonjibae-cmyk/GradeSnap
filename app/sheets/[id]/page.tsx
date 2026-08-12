@@ -15,6 +15,7 @@ import {
 import type { ItemRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import type { Verdict } from "@/lib/grading/types";
 import { label } from "@/lib/grading/provider";
+import { tooShort } from "@/lib/grading/suspect";
 import { readJson } from "@/lib/http";
 
 /**
@@ -417,6 +418,17 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
                 </td>
                 <td className="p-2 text-xs text-slate-500">
                   {it.overturned && <span className="mr-1 font-medium text-sky-700">고침</span>}
+                  {/*
+                    🔴 **정답인데 눈에 띄게 짧은 답**을 짚습니다(§13.38).
+
+                    이 오류는 학생에게 유리한 쪽으로 틀립니다 — ○가 떠 있고
+                    오답 수도 적으니 그냥 넘어갑니다. 틀린 쪽이 눈에 띄는
+                    오류와 달리 **아무도 안 보게 생긴 오류**라, 눈을 그 줄로
+                    데려올 표시가 필요합니다. 판정은 안 바꿉니다.
+                  */}
+                  {it.final_correct === true && tooShort(it.written, it.expected) && (
+                    <span className="mr-1 font-medium text-amber-700">정답보다 짧습니다 — 확인</span>
+                  )}
                   {it.note}
                 </td>
               </tr>
