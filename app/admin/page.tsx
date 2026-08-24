@@ -20,6 +20,7 @@ import {
   type RetentionStatus,
 } from "@/lib/db/queries";
 import { readJson } from "@/lib/http";
+import { MIN_PASSWORD } from "@/lib/password";
 import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
 import { FIXED_INPUT_PER_PAGE, imageTokens, split } from "@/lib/tokens";
 import { breakdown, edgeFactor, krw, project, saving } from "@/lib/cost";
@@ -978,6 +979,34 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
     }
   }
 
+  /**
+   * 임시 비밀번호를 새로 발급합니다. **비밀번호를 잊어 로그인조차 안 될 때**입니다.
+   *
+   * 원장님이 직접 정하게 둡니다 — 무작위로 만들어 화면에 띄우면 그걸 다시
+   * 받아 적어 전달해야 하고, 옮겨 적다 틀리면 또 못 들어옵니다.
+   */
+  async function resetPassword(id: string, name: string) {
+    const pw = prompt(`${name || "이 직원"}의 임시 비밀번호를 정하십시오 (${MIN_PASSWORD}자 이상).`);
+    if (pw === null) return;
+    setBusy(true);
+    setMade(null);
+    try {
+      const { data } = await db.auth.getSession();
+      const r = await fetch("/api/staff", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${data.session?.access_token ?? ""}` },
+        body: JSON.stringify({ id, password: pw }),
+      });
+      const j = await readJson(r);
+      if (!r.ok) throw new Error(j?.error ?? `요청 실패 (${r.status})`);
+      setMade(`${name || "직원"}의 비밀번호를 새로 정했습니다. 본인에게 직접 전달하고, 본인이 「내 계정」에서 다시 바꾸게 하십시오.`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between">
@@ -1019,7 +1048,7 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
           <input
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder="비밀번호 (10자 이상)"
+            placeholder={`비밀번호 (${MIN_PASSWORD}자 이상)`}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <select
@@ -1034,8 +1063,8 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
             ))}
           </select>
           <p className="text-xs text-slate-500 sm:col-span-2">
-            비밀번호가 화면에 그대로 보입니다 — <strong>적어서 본인에게 직접 전달</strong>하고, 본인이 바꾸게
-            하십시오. 여기서는 다시 볼 수 없습니다.
+            비밀번호가 화면에 그대로 보입니다 — <strong>적어서 본인에게 직접 전달</strong>하고, 본인이{" "}
+            <strong>「내 계정」에서 바꾸게</strong> 하십시오. 여기서는 다시 볼 수 없습니다.
           </p>
           <button
             type="submit"
@@ -1067,6 +1096,17 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
                   </option>
                 ))}
               </select>
+              {/*
+                비밀번호를 잊으면 로그인 자체가 안 돼서 「내 계정」에 못 들어갑니다.
+                그때 풀 수 있는 사람은 관리자뿐입니다(§13.39).
+              */}
+              <button
+                onClick={() => void resetPassword(s.id, s.name)}
+                disabled={busy}
+                className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+              >
+                비밀번호 재발급
+              </button>
               {/* 자기 자신은 못 끕니다 — 관리자가 스스로를 잠그면 되돌릴 길이 SQL뿐입니다. */}
               <button
                 onClick={() => void patch(s.id, { active: !s.active })}
@@ -1081,6 +1121,11 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
       </ul>
       <p className="mt-2 text-xs text-slate-500">
         퇴사자는 <strong>지우지 않고 중지</strong>합니다. 행을 지우면 그 사람이 채점한 기록이 주인을 잃습니다.
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        🔶 <strong>비밀번호 재발급은 남의 계정에 들어갈 수 있는 힘입니다.</strong> 발급한 비밀번호로
+        로그인하면 사용·확정 기록에 <strong>그 사람 이름</strong>이 남습니다. 발급했으면 본인에게 전달하고
+        <strong> 본인이 「내 계정」에서 다시 바꾸게</strong> 하십시오.
       </p>
     </section>
   );

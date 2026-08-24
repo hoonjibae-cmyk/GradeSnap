@@ -8,6 +8,7 @@ import { Crown } from "@/components/Logo";
 import { browserClient } from "@/lib/db/client";
 import { me, requestAccess } from "@/lib/db/queries";
 import type { StaffRow } from "@/lib/db/schema";
+import { MIN_PASSWORD } from "@/lib/password";
 
 /**
  * 로그인 관문.
@@ -271,7 +272,7 @@ export function Gate({
                 type="password"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
-                placeholder={signup ? "비밀번호 (6자 이상)" : "비밀번호"}
+                placeholder={signup ? `비밀번호 (${MIN_PASSWORD}자 이상)` : "비밀번호"}
                 autoComplete={signup ? "new-password" : "current-password"}
                 className={field}
               />
@@ -371,6 +372,7 @@ export function Bar({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           { href: "/admin", label: "관리" },
         ]
       : []),
+    { href: "/account", label: "내 계정" },
     { href: "/help", label: "안내" },
   ];
   // 답안지 상세(/sheets/…)에서는 접수를 현재 위치로 봅니다 — 거기서 넘어온 화면입니다.
