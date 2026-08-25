@@ -637,10 +637,17 @@ function Row({ db, s, onChange }: { db: SupabaseClient; s: SheetRow; onChange: (
         </p>
       )}
 
-      {s.missing !== null && s.missing > 0 && !s.robust_to_missing && (
+      {/*
+        판정이 없는 이유는 둘입니다 — **못 읽은 칸**과 **정답을 알 수 없는
+        문항**(§13.40). 예전에는 앞의 것만 말해서, 순서배열 같은 문항 때문에
+        판정이 안 나면 화면이 아무 말도 안 했습니다.
+      */}
+      {s.robust_to_missing === false && (
         <p className="mt-2 rounded-lg bg-rose-50 p-2 text-sm text-rose-900">
-          못 읽은 {s.missing}칸이 <strong>결과를 뒤집을 수 있어 PASS/FAIL을 내지 않았습니다.</strong> 나머지 장을
-          찍어 다시 접수하거나 검수하십시오.
+          판정하지 못한 칸이 <strong>결과를 뒤집을 수 있어 PASS/FAIL을 내지 않았습니다.</strong>{" "}
+          {s.missing !== null && s.missing > 0
+            ? `못 읽은 ${s.missing}칸이 있습니다 — 나머지 장을 찍어 다시 접수하거나 검수하십시오.`
+            : "검수 화면에서 해당 문항을 사람이 채점하십시오."}
         </p>
       )}
     </li>

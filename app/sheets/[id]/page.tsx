@@ -16,6 +16,7 @@ import type { ItemRow, SheetRow, StaffRow } from "@/lib/db/schema";
 import type { Verdict } from "@/lib/grading/types";
 import { label } from "@/lib/grading/provider";
 import { tooShort } from "@/lib/grading/suspect";
+import { isOpen } from "@/lib/grading/unjudged";
 import { readJson } from "@/lib/http";
 
 /**
@@ -229,7 +230,13 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
   */
   const confirmed = sheet.status === "confirmed";
   const v = sheet.final_verdict ?? sheet.verdict;
-  const wrong = items.filter((i) => i.final_correct === false).length;
+  /*
+    판정 못 한 문항(§13.40)은 **오답으로 세지 않습니다.** 서버가 그렇게
+    셌으므로 화면도 같아야 합니다 — 다르면 머리말의 오답 수와 아래 표가
+    어긋나고, 어느 쪽이 맞는지 아무도 모릅니다.
+  */
+  const open = items.filter(isOpen);
+  const wrong = items.filter((i) => !isOpen(i) && i.final_correct === false).length;
   const changed = items.filter((i) => i.overturned).length;
   const reviewed = items.filter((i) => i.teacher_correct !== null).length;
 
@@ -260,6 +267,11 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
             >
               {v === "pass" ? "PASS" : "FAIL"}
               {confirmed && " · 확정"}
+            </span>
+          )}
+          {open.length > 0 && (
+            <span className="rounded-full bg-rose-100 px-3 py-1 text-sm font-bold text-rose-800">
+              직접 채점할 문항 {open.length}개
             </span>
           )}
           <span className="text-sm text-slate-700">
@@ -379,6 +391,9 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
                 </td>
                 <td className="p-2 text-slate-500">{it.expected}</td>
                 <td className="p-2">
+                  {isOpen(it) && (
+                    <p className="mb-1 text-[11px] font-medium text-rose-700">정답 모름 — 직접 채점</p>
+                  )}
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => void mark(it, true)}
@@ -396,7 +411,7 @@ function Review({ db, staff, id }: { db: SupabaseClient; staff: StaffRow; id: st
                       onClick={() => void mark(it, false)}
                       disabled={busy || confirmed}
                       className={`h-7 w-7 rounded border text-sm ${
-                        it.final_correct === false
+                        it.final_correct === false && !isOpen(it)
                           ? "border-rose-500 bg-rose-500 font-bold text-white"
                           : "border-slate-300 text-slate-400"
                       } disabled:opacity-40`}

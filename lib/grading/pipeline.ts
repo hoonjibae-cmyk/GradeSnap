@@ -13,6 +13,7 @@
 import { checkDrift, missingCount } from "./drift";
 import { applyReference, buildReference, refFingerprint, refKey, type ExamRef } from "./reference";
 import { judge, judgeWithKey } from "./stages";
+import { isUnjudged, splitUnjudged, unjudgedWarning } from "./unjudged";
 import type { CallOptions, ModelClient } from "./provider";
 import type { JudgeResult, Transcript, Usage, Warning } from "./types";
 
@@ -45,6 +46,14 @@ export interface JudgedSheet {
   judgedByModel: number;
   /** 이 답안지로 참조를 새로 만들었는가. */
   savedRef: boolean;
+  /**
+   * **정답을 알 수 없어 판정하지 못한 문항 수**(§13.40).
+   *
+   * 오답이 아닙니다. 못 읽은 칸(`missing`)과 같은 자리로 보내야 합니다 —
+   * 이만큼 전부 틀렸다고 가정해도 결과가 그대로면 판정하고, 뒤집히면
+   * 판정하지 않습니다.
+   */
+  unjudged: number;
 }
 
 export async function judgeSheet(
@@ -71,13 +80,12 @@ export async function judgeSheet(
     const { pre, todo, expectedByNo } = applyReference(transcript.items, ref);
     if (!todo.length) {
       // 볼 것이 하나도 없는 답안지 — **판정 호출을 안 합니다.**
-      return { results: pre, warnings, missing, usage, usedRef: true, judgedByModel: 0, savedRef: false };
+      return { ...withUnjudged(pre, warnings), missing, usage, usedRef: true, judgedByModel: 0, savedRef: false };
     }
     const r = await judgeWithKey(client, todo, expectedByNo, strictSpelling, opts);
     usage.push(r.usage);
     return {
-      results: [...pre, ...r.results],
-      warnings,
+      ...withUnjudged([...pre, ...r.results], warnings),
       missing,
       usage,
       usedRef: true,
@@ -97,7 +105,15 @@ export async function judgeSheet(
     것이지, 이 학생의 결과를 버릴 이유가 아닙니다.
   */
   let savedRef = false;
-  if (useRefs) {
+  /*
+    🔴 **판정 못 한 문항이 있으면 참조를 안 만듭니다.**
+
+    참조는 그 시험의 정답 기준이 됩니다. 정답을 모르는 문항이 섞인 채로
+    저장하면 **반 전체가 빈 정답 또는 지어낸 정답으로 채점됩니다.** 참조가
+    없으면 매번 전체 경로로 갈 뿐이라 잃는 것은 절감뿐입니다.
+  */
+  const anyUnjudged = r.results.some(isUnjudged);
+  if (useRefs && !anyUnjudged) {
     const built = buildReference(transcript, r.results, warnings, missing);
     if (built) {
       try {
@@ -109,5 +125,28 @@ export async function judgeSheet(
     }
   }
 
-  return { results: r.results, warnings, missing, usage, usedRef: false, judgedByModel: transcript.items.length, savedRef };
+  return {
+    ...withUnjudged(r.results, warnings),
+    missing,
+    usage,
+    usedRef: false,
+    judgedByModel: transcript.items.length,
+    savedRef,
+  };
+}
+
+/**
+ * 판정 못 한 문항을 세고, **사람이 보라고 경고를 답니다.**
+ *
+ * 경고를 안 달면 화면에는 "오답 3개"만 뜨고 판정이 왜 없는지 아무도
+ * 모릅니다. 못 푼 것 자체보다 **말 안 하는 것**이 문제입니다.
+ */
+function withUnjudged(results: JudgeResult[], warnings: Warning[]) {
+  const { unjudged } = splitUnjudged(results);
+  const text = unjudgedWarning(results);
+  return {
+    results,
+    unjudged,
+    warnings: text ? [...warnings, { level: "incomplete" as const, text }] : warnings,
+  };
 }

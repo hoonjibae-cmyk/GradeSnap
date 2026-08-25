@@ -3,6 +3,7 @@ import { compare } from "@/lib/grading/compare";
 import { bearer, userClient } from "@/lib/db/client";
 import { getSheet, itemsOf, recount } from "@/lib/db/queries";
 import { toJudgeResults } from "@/lib/db/schema";
+import { isOpen } from "@/lib/grading/unjudged";
 
 export const runtime = "nodejs";
 
@@ -42,8 +43,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // 넣어준 값 > 조교가 전에 넣어둔 값 > 시험지에서 읽은 값
     const cutText = cutLine ?? sheet.cut_line ?? sheet.transcript?.sheet.cutLine ?? "";
-    const results = toJudgeResults(await itemsOf(db, id));
-    const cmp = compare(results, { wrong: [], passFail: "unmarked" }, cutText, 2, sheet.missing ?? 0);
+    /*
+      🔴 **다시 셀 때도 같은 규칙입니다**(§13.40).
+
+      정답을 알 수 없어 판정 못 한 문항을 여기서 오답으로 세면, 검수 화면에서
+      다른 문항 하나만 고쳐도 **판정이 조용히 뒤집힙니다.** 채점 때와 다시 셀
+      때가 다르면 어느 쪽도 못 믿습니다.
+
+      단, **사람이 그 문항을 직접 채점했으면 더 이상 모름이 아닙니다.**
+    */
+    const rows = await itemsOf(db, id);
+    const open = rows.filter(isOpen).length;
+    const results = toJudgeResults(rows.filter((r) => !isOpen(r)));
+    const cmp = compare(results, { wrong: [], passFail: "unmarked" }, cutText, 2, (sheet.missing ?? 0) + open);
 
     await recount(db, id, cutLine ?? sheet.cut_line ?? "", {
       missing: sheet.missing ?? 0,

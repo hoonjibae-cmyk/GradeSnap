@@ -4,6 +4,7 @@ import { compare } from "@/lib/grading/compare";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { transcribe } from "@/lib/grading/stages";
 import { judgeSheet } from "@/lib/grading/pipeline";
+import { splitUnjudged } from "@/lib/grading/unjudged";
 import { bearer, userClient } from "@/lib/db/client";
 import {
   claim,
@@ -97,11 +98,28 @@ export async function POST(req: Request) {
       { transcript, pages: pages.length, strictSpelling: sheet.strict_spelling, useRefs, sheetId: id, opts },
       examRefs(db),
     );
-    const { results, warnings, missing } = judged;
+    const { results, warnings, missing, unjudged } = judged;
     usage.push(...judged.usage);
 
     const cost = costUsd(usage, usage[0].model);
-    const cmp = compare(results, { wrong: [], passFail: "unmarked" }, transcript.sheet.cutLine, 2, missing);
+    /*
+      🔴 **판정 못 한 문항은 오답으로 세지 않습니다**(§13.40).
+
+      순서배열·문장삽입처럼 정답이 지문에 달린 문항은 판정 단계가 알 수
+      없습니다. 그걸 오답으로 세면 **우리가 못 푼 것을 학생이 뒤집어씁니다.**
+      정답으로 세면 반대로 그냥 넘어갑니다.
+
+      그래서 못 읽은 칸과 같은 자리로 보냅니다 — 이만큼 전부 틀렸다고
+      가정해도 결과가 그대로면 판정하고, 뒤집히면 PASS/FAIL을 안 냅니다.
+    */
+    const counted = splitUnjudged(results).judged;
+    const cmp = compare(
+      counted,
+      { wrong: [], passFail: "unmarked" },
+      transcript.sheet.cutLine,
+      2,
+      missing + unjudged,
+    );
 
     const saved = await saveGrading(db, id, {
       transcript,
