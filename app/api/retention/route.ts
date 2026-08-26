@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminClient, bearer, userClient } from "@/lib/db/client";
-import { me, purgeExpired } from "@/lib/db/queries";
+import { me, purgeAnswerKeys, purgeExpired } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,10 +41,20 @@ export async function GET(req: Request) {
   }
 
   try {
-    const result = await purgeExpired(adminClient());
+    const admin = adminClient();
+    const result = await purgeExpired(admin);
+    /*
+      정답지도 여기서 같이 지웁니다(한 달, §13.43). 따로 도는 것을 하나 더
+      만들면 **그것만 조용히 안 도는 날**이 옵니다. 사진 정리가 실패해도
+      정답지는 지워지게 순서를 뒤에 둡니다 — 서로 인질로 잡지 않습니다.
+    */
+    const keys = await purgeAnswerKeys(admin).catch((e) => {
+      console.error("[retention] 정답지", e instanceof Error ? e.message : String(e));
+      return 0;
+    });
     // 지운 기록은 로그에 남깁니다. 나중에 "정말 돌고 있었나"를 물을 때 필요합니다.
-    console.log("[retention]", who, JSON.stringify(result));
-    return NextResponse.json(result);
+    console.log("[retention]", who, JSON.stringify({ ...result, keys }));
+    return NextResponse.json({ ...result, keys });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[retention]", message);

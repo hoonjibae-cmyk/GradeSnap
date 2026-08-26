@@ -285,6 +285,36 @@ export async function saveAnswerKey(
   if (res.error) throw new Error(`정답지 저장: ${res.error.message}`);
 }
 
+/**
+ * 정답지 보관 기간. **한 달**입니다(§13.43).
+ *
+ * 시험 제목으로 맞추므로, 다음 학기에 같은 제목으로 **내용이 다른** 시험을
+ * 내면 옛 정답지가 조용히 적용됩니다. 반 전체가 틀리게 채점되고 경고도
+ * 안 뜹니다. 기간을 두는 이유가 그것입니다 — **오래된 정답은 위험합니다.**
+ *
+ * 다시 올리면 그날부터 다시 한 달입니다(`updated_at` 기준).
+ */
+export const KEY_DAYS = 30;
+
+/** 이 정답지가 몇 날 뒤에 지워지는가. 0 이하면 이미 지날 것입니다. */
+export function keyDaysLeft(updatedAt: string, now = new Date()): number {
+  const gone = new Date(updatedAt).getTime() + KEY_DAYS * 86400000;
+  return Math.ceil((gone - now.getTime()) / 86400000);
+}
+
+/**
+ * 한 달이 지난 정답지를 지웁니다. **매일 새벽 정리 작업이 부릅니다.**
+ *
+ * 사진 정리와 같은 자리에 둡니다 — 따로 도는 것을 하나 더 만들면 그것만
+ * 조용히 안 도는 날이 옵니다.
+ */
+export async function purgeAnswerKeys(admin: SupabaseClient, now = new Date()): Promise<number> {
+  const cut = new Date(now.getTime() - KEY_DAYS * 86400000).toISOString();
+  const res = await admin.from("answer_keys").delete().lt("updated_at", cut).select("slug");
+  if (res.error) throw new Error(`정답지 정리: ${res.error.message}`);
+  return (res.data ?? []).length;
+}
+
 export async function deleteAnswerKey(db: SupabaseClient, slug: string): Promise<void> {
   const res = await db.from("answer_keys").delete().eq("slug", slug);
   if (res.error) throw new Error(`정답지 삭제: ${res.error.message}`);

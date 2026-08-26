@@ -24,6 +24,7 @@ migrations/20260811000300_self_signup.sql       -- 셀프 가입 + 관리자 승
 migrations/20260811000400_assistant_confirm.sql -- 확정을 조교에게도 엶
 migrations/20260811000500_cancel_grading.sql    -- 채점 중단(cancelled) 상태
 migrations/20260812000100_answer_keys.sql       -- 정답지 등록 (순서배열·문장삽입)
+migrations/20260812000200_answer_keys_open.sql  -- 정답지 등록을 조교에게 엶
 ```
 
 시험 참조를 **켜는** 것은 마이그레이션과 별개입니다. 관리 화면의 스위치를

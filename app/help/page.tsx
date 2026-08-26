@@ -202,7 +202,26 @@ export default function HelpPage() {
         </Note>
       </Section>
 
-      <Section n={7} title="명단">
+      <Section n={7} title="정답지 — 순서배열·문장삽입이 있는 시험">
+        <p>
+          <b>순서배열이나 문장 삽입 문항은 프로그램이 정답을 모릅니다.</b> 정답이 지문에 달려 있는데
+          프로그램은 답란만 보기 때문입니다.
+        </p>
+        <p>
+          선생님이 만들어 두신 <b>정답지를 한 번 찍어 올리면</b> 그때부터 그 시험은 채점됩니다. 위 메뉴의{" "}
+          <b>「정답지」</b>에서 사진을 올리고, 화면에 뜬 번호·정답이 맞는지 보고 등록하면 됩니다.
+        </p>
+        <Note tone="warn">
+          <b>등록 전에 표를 꼭 확인하십시오.</b> 정답지가 틀리면 <b>그 시험을 본 학생 전부가</b> 똑같이
+          틀리게 채점됩니다. 잘못 읽힌 칸은 그 자리에서 고칠 수 있습니다.
+        </Note>
+        <Note>
+          <b>시험 제목으로 맞춥니다</b> — 답안지에 인쇄된 제목과 같아야 합니다. 그리고 올린 지{" "}
+          <b>30일이 지나면 자동으로 지워집니다.</b> 계속 쓰시려면 다시 올리면 됩니다.
+        </Note>
+      </Section>
+
+      <Section n={8} title="명단">
         <p>
           <Path>/roster</Path> 에서 그날 <b>재시험 명단</b>과 학생별 오답을 봅니다. 복사해서 메신저에 붙이거나
           인쇄할 수 있습니다.
@@ -213,7 +232,7 @@ export default function HelpPage() {
         </Note>
       </Section>
 
-      <Section n={8} title="지켜야 할 것">
+      <Section n={9} title="지켜야 할 것">
         <ul className="list-disc space-y-1.5 pl-5">
           <li>
             <b>학원 업무용입니다.</b> 학생 답안지 채점 외의 용도로 쓸 수 없습니다.
@@ -239,7 +258,7 @@ export default function HelpPage() {
         </p>
       </Section>
 
-      <Section n={9} title="안 될 때">
+      <Section n={10} title="안 될 때">
         <Rows
           rows={[
             ["로그인이 안 됨", "이메일·비밀번호를 다시 확인하십시오. 비밀번호를 잊었으면 원장님께 재발급을 요청하십시오."],

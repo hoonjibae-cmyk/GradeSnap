@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { KEY_DAYS, keyDaysLeft } from "@/lib/db/queries";
 
 /*
   🔴 2026-08-12. 「판정 불가 분석」이 정확히 `0 / 1000 문항`으로 떴습니다.
@@ -74,5 +75,35 @@ describe("1000줄 벽", () => {
   it("오류는 삼키지 않고 올립니다", async () => {
     const q = () => Promise.resolve({ data: null, error: { message: "권한 없음" } });
     await expect(all(q, "문항")).rejects.toThrow(/문항: 권한 없음/);
+  });
+});
+
+/*
+  정답지는 올린 지 한 달이면 자동으로 지워집니다(§13.43).
+
+  기간을 두는 이유는 보관이 아까워서가 아닙니다. 정답지는 **시험 제목으로**
+  맞추므로, 다음 학기에 같은 제목으로 내용이 다른 시험을 내면 옛 정답이
+  조용히 적용됩니다. 반 전체가 틀리게 채점되고 경고도 안 뜹니다.
+*/
+describe("정답지 보관 기간", () => {
+  const now = new Date("2026-09-01T00:00:00Z");
+  const daysAgo = (n: number) => new Date(now.getTime() - n * 86400000).toISOString();
+
+  it("갓 올린 것은 한 달 남습니다", () => {
+    expect(keyDaysLeft(daysAgo(0), now)).toBe(KEY_DAYS);
+  });
+
+  it("남은 날이 줄어듭니다", () => {
+    expect(keyDaysLeft(daysAgo(29), now)).toBe(1);
+    expect(keyDaysLeft(daysAgo(30), now)).toBe(0);
+  });
+
+  it("지난 것은 음수 — 다음 정리 때 지워집니다", () => {
+    expect(keyDaysLeft(daysAgo(45), now)).toBeLessThan(0);
+  });
+
+  it("다시 올리면 그날부터 다시 셉니다", () => {
+    // `updated_at`을 봅니다. 덮어쓰기가 곧 연장입니다.
+    expect(keyDaysLeft(daysAgo(0), now)).toBe(KEY_DAYS);
   });
 });

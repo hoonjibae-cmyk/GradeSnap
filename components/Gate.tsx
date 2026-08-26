@@ -372,6 +372,7 @@ export function Bar({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           { href: "/admin", label: "관리" },
         ]
       : []),
+    { href: "/keys", label: "정답지" },
     { href: "/account", label: "내 계정" },
     { href: "/help", label: "안내" },
   ];

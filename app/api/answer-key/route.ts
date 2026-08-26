@@ -22,9 +22,13 @@ export async function POST(req: Request) {
 
   const db = userClient(token);
   const staff = await me(db).catch(() => null);
-  // 정답지를 정하는 것은 확정과 같은 무게입니다 — 같은 문을 씁니다.
-  if (!staff?.active || staff.role === "assistant") {
-    return NextResponse.json({ error: "정답지 등록은 선생님·관리자만 할 수 있습니다." }, { status: 403 });
+  /*
+    **조교도 올립니다**(§13.43). 정답을 정하는 사람은 선생님이고, 조교가 하는
+    일은 그 종이를 찍어 올리는 것뿐입니다. 그리고 이 프로그램은 채점이 밀릴
+    때 쓰는 도구라, 등록에 관리자를 기다려야 하면 정작 밀리는 시간에 못 씁니다.
+  */
+  if (!staff?.active) {
+    return NextResponse.json({ error: "승인된 직원만 할 수 있습니다." }, { status: 403 });
   }
 
   let data: string;
