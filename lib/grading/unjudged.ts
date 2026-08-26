@@ -79,3 +79,82 @@ export function unjudgedWarning(results: JudgeResult[]): string | null {
  */
 export const isOpen = (row: { note: string; final_correct?: boolean | null }): boolean =>
   isUnjudged(row) && (row.final_correct ?? null) === null;
+
+// ---------------------------------------------------------------------------
+// 분석 — **무엇이 판정 불가로 뜨는가**
+// ---------------------------------------------------------------------------
+
+/**
+ * 2026-08-12. "대부분의 시험이 판정할 수 없는 유형으로 뜬다"는 보고를 받고
+ * 만들었습니다.
+ *
+ * 가려야 할 것이 둘입니다. 둘은 **고치는 방법이 정반대**입니다.
+ *
+ *   ① 진짜 못 푸는 유형(순서배열·문장삽입)이 실제로 많다
+ *      → 정답을 시험마다 한 번 사람이 정해 주면 됩니다.
+ *   ② 풀 수 있는 문항까지 모델이 "모름"으로 넘긴다
+ *      → 제가 넣은 규칙이 너무 넓은 것입니다. 좁히면 바로 회복됩니다.
+ *
+ * 숫자만으로는 못 가릅니다. 그래서 **표본(제시어·학생 답)을 같이 냅니다** —
+ * 사람이 한눈에 "이건 당연히 풀 수 있는 건데"를 알아볼 수 있게.
+ */
+
+export interface UnjudgedExam {
+  title: string;
+  sheets: number;
+  items: number;
+  unjudged: number;
+  /** 이 시험에서 판정 못 한 문항 비율. */
+  rate: number;
+  /** 실제로 어떤 문항인지. **숫자보다 이게 답을 정합니다.** */
+  samples: { no: string; prompt: string; written: string }[];
+}
+
+export interface UnjudgedReport {
+  items: number;
+  unjudged: number;
+  rate: number;
+  /** 판정 못 한 문항이 있는 시험만, 많은 순으로. */
+  exams: UnjudgedExam[];
+}
+
+const SAMPLES = 4;
+
+export function summarizeUnjudged(
+  sheets: { id: string; title: string }[],
+  rows: { sheet_id: string; no: string; prompt: string; written: string; note: string; final_correct?: boolean | null }[],
+): UnjudgedReport {
+  const titleOf = new Map(sheets.map((s) => [s.id, (s.title || "").trim() || "(제목 못 읽음)"]));
+  const byTitle = new Map<string, UnjudgedExam & { ids: Set<string> }>();
+  let items = 0;
+  let unjudged = 0;
+
+  for (const r of rows) {
+    const title = titleOf.get(r.sheet_id);
+    // 이 기간 답안지에 속하지 않는 행은 셈에서 뺍니다.
+    if (title === undefined) continue;
+    let e = byTitle.get(title);
+    if (!e) {
+      e = { title, sheets: 0, items: 0, unjudged: 0, rate: 0, samples: [], ids: new Set() };
+      byTitle.set(title, e);
+    }
+    e.ids.add(r.sheet_id);
+    e.items++;
+    items++;
+    // **사람이 이미 채점한 것은 빼고 셉니다** — 남은 일이 얼마인지가 알고 싶은 값입니다.
+    if (isOpen(r)) {
+      e.unjudged++;
+      unjudged++;
+      if (e.samples.length < SAMPLES) {
+        e.samples.push({ no: r.no, prompt: r.prompt, written: r.written });
+      }
+    }
+  }
+
+  const exams = [...byTitle.values()]
+    .map(({ ids, ...e }) => ({ ...e, sheets: ids.size, rate: e.items ? e.unjudged / e.items : 0 }))
+    .filter((e) => e.unjudged > 0)
+    .sort((a, b) => b.unjudged - a.unjudged);
+
+  return { items, unjudged, rate: items ? unjudged / items : 0, exams };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compare } from "../compare";
-import { isOpen, isUnjudged, splitUnjudged, unjudgedWarning, UNJUDGED } from "../unjudged";
+import { isOpen, isUnjudged, splitUnjudged, summarizeUnjudged, unjudgedWarning, UNJUDGED } from "../unjudged";
 import type { JudgeResult } from "../types";
 
 /*
@@ -77,5 +77,55 @@ describe("판정에 미치는 영향", () => {
     const { judged, unjudged } = splitUnjudged(results);
     const 새방식 = compare(judged, marks, "-2 까지 pass", 2, unjudged);
     expect(새방식.ourVerdict).toBeNull(); // 단정하지 않고 사람에게 넘깁니다
+  });
+});
+
+describe("판정 불가 분석", () => {
+  const sheets = [
+    { id: "a", title: "Ch.13 문법 추가시험" },
+    { id: "b", title: "Ch.13 문법 추가시험" },
+    { id: "c", title: "3과 단어시험" },
+  ];
+  const row = (sheet_id: string, no: string, note = "", final_correct: boolean | null = null) => ({
+    sheet_id,
+    no,
+    prompt: `p${no}`,
+    written: `w${no}`,
+    note,
+    final_correct,
+  });
+
+  it("시험별로 묶고 많은 순으로 냅니다", () => {
+    const rep = summarizeUnjudged(sheets, [
+      row("a", "1", UNJUDGED),
+      row("a", "2", UNJUDGED),
+      row("a", "3"),
+      row("b", "1", UNJUDGED),
+      row("c", "1"),
+      row("c", "2"),
+    ]);
+    expect(rep.items).toBe(6);
+    expect(rep.unjudged).toBe(3);
+    expect(rep.exams).toHaveLength(1);
+    expect(rep.exams[0].title).toBe("Ch.13 문법 추가시험");
+    expect(rep.exams[0].sheets).toBe(2);
+    expect(rep.exams[0].unjudged).toBe(3);
+  });
+
+  it("사람이 이미 채점한 것은 남은 일에서 뺍니다", () => {
+    const rep = summarizeUnjudged(sheets, [row("a", "1", UNJUDGED, true), row("a", "2", UNJUDGED)]);
+    expect(rep.unjudged).toBe(1);
+  });
+
+  it("표본을 같이 냅니다 — 숫자만으로는 원인을 못 가립니다", () => {
+    const rep = summarizeUnjudged(sheets, [row("a", "7", UNJUDGED), row("a", "8", UNJUDGED)]);
+    expect(rep.exams[0].samples.map((s) => s.no)).toEqual(["7", "8"]);
+    expect(rep.exams[0].samples[0].prompt).toBe("p7");
+  });
+
+  it("판정 불가가 없는 시험은 목록에 안 냅니다", () => {
+    const rep = summarizeUnjudged(sheets, [row("c", "1"), row("c", "2")]);
+    expect(rep.exams).toHaveLength(0);
+    expect(rep.rate).toBe(0);
   });
 });

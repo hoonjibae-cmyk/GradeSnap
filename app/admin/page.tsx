@@ -9,6 +9,7 @@ import {
   getSettings,
   deleteSheet,
   gradedBetween,
+  itemsFor,
   pagesFor,
   retentionStatus,
   sheetsOfStudent,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/db/queries";
 import { readJson } from "@/lib/http";
 import { MIN_PASSWORD } from "@/lib/password";
+import { summarizeUnjudged, type UnjudgedReport } from "@/lib/grading/unjudged";
 import { CATALOG, EFFORTS, label, normalizeGrading } from "@/lib/grading/provider";
 import { FIXED_INPUT_PER_PAGE, imageTokens, split } from "@/lib/tokens";
 import { breakdown, edgeFactor, krw, project, saving } from "@/lib/cost";
@@ -73,6 +75,7 @@ function Admin({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       <h1 className="mb-4 text-xl font-bold">관리</h1>
       {err && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{err}</p>}
       <Grading db={db} onError={setErr} />
+      <Unjudged db={db} onError={setErr} />
       <Cost db={db} onError={setErr} />
       <Usage db={db} onError={setErr} />
       <People db={db} meId={staff.id} onError={setErr} />
@@ -1127,6 +1130,135 @@ function People({ db, meId, onError }: { db: SupabaseClient; meId: string; onErr
         로그인하면 사용·확정 기록에 <strong>그 사람 이름</strong>이 남습니다. 발급했으면 본인에게 전달하고
         <strong> 본인이 「내 계정」에서 다시 바꾸게</strong> 하십시오.
       </p>
+    </section>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// 판정 불가 분석 (docs/13 §13.41)
+// ---------------------------------------------------------------------------
+
+/**
+ * **무엇이 판정 불가로 뜨는가.**
+ *
+ * 2026-08-12, "대부분의 시험이 판정할 수 없는 유형으로 뜬다"는 보고가
+ * 있었습니다. 원인이 둘일 수 있고 **고치는 방법이 정반대**입니다 —
+ * 진짜 못 푸는 유형이 많거나, 풀 수 있는 것까지 모델이 넘기거나.
+ *
+ * 숫자만으로는 못 가릅니다. 그래서 **실제 문항을 같이 보여줍니다.**
+ */
+function Unjudged({ db, onError }: { db: SupabaseClient; onError: (m: string) => void }) {
+  const [days, setDays] = useState(7);
+  const [rep, setRep] = useState<UnjudgedReport | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    try {
+      const to = new Date();
+      const from = new Date(to.getTime() - (days - 1) * 86400000);
+      const day = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const sheets = await gradedBetween(db, day(from), day(to));
+      // 문항이 없으면 물어볼 것도 없습니다 — 빈 in() 질의를 아끼기 위해서이기도 합니다.
+      const rows = sheets.length ? await itemsFor(db, sheets.map((x) => x.id)) : [];
+      setRep(summarizeUnjudged(sheets, rows));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [db, days, onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">판정 불가 분석</h2>
+        <select
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+          className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+        >
+          {[2, 7, 14, 30].map((d) => (
+            <option key={d} value={d}>
+              최근 {d}일
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        프로그램이 <strong>정답을 알 수 없어 사람에게 넘긴</strong> 문항입니다. 사람이 이미 ○/✗를 누른 것은
+        뺐습니다 — <strong>남아 있는 일</strong>만 셉니다.
+      </p>
+
+      {busy && !rep && <p className="mt-3 text-sm text-slate-500">불러오는 중…</p>}
+
+      {rep && (
+        <>
+          <div className="mt-3 flex flex-wrap gap-6">
+            <div>
+              <p className="text-2xl font-bold">{(rep.rate * 100).toFixed(1)}%</p>
+              <p className="text-xs text-slate-500">
+                {rep.unjudged} / {rep.items} 문항
+              </p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{rep.exams.length}</p>
+              <p className="text-xs text-slate-500">해당 시험 수</p>
+            </div>
+          </div>
+
+          {rep.items === 0 && <p className="mt-3 text-sm text-slate-500">이 기간에 채점된 답안지가 없습니다.</p>}
+          {rep.items > 0 && rep.exams.length === 0 && (
+            <p className="mt-3 rounded-lg bg-emerald-50 p-2 text-sm text-emerald-900">
+              판정 못 한 문항이 없습니다.
+            </p>
+          )}
+
+          {rep.exams.map((e) => (
+            <div key={e.title} className="mt-3 rounded-lg border border-slate-200 p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-medium">{e.title}</p>
+                <p className="text-sm text-slate-600">
+                  <strong className={e.rate > 0.3 ? "text-rose-700" : "text-slate-800"}>
+                    {(e.rate * 100).toFixed(0)}%
+                  </strong>{" "}
+                  · {e.unjudged} / {e.items} 문항 · 답안지 {e.sheets}장
+                </p>
+              </div>
+              {/*
+                🔴 **이 표본이 이 화면의 전부입니다.**
+
+                "당연히 풀 수 있는 문항인데 넘겼다"인지 "정말 지문을 봐야
+                하는 문항"인지는 사람이 보면 한눈에 압니다. 비율만 보여주면
+                어느 쪽인지 모른 채 프롬프트만 만지게 됩니다.
+              */}
+              <table className="mt-2 w-full text-xs">
+                <thead className="text-left text-slate-500">
+                  <tr>
+                    <th className="py-1 font-medium">번호</th>
+                    <th className="py-1 font-medium">제시어(문항)</th>
+                    <th className="py-1 font-medium">학생이 쓴 것</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {e.samples.map((x, i) => (
+                    <tr key={i} className="border-t border-slate-100 align-top">
+                      <td className="py-1 pr-2 text-slate-500">{x.no}</td>
+                      <td className="py-1 pr-2">{x.prompt || <span className="text-slate-400">(비어 있음)</span>}</td>
+                      <td className="py-1 font-medium">{x.written || <span className="text-slate-400">(무응답)</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </>
+      )}
     </section>
   );
 }
