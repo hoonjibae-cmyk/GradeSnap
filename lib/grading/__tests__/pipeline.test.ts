@@ -203,3 +203,93 @@ describe("채점 흐름 — 시험 참조가 실제로 불리는가", () => {
     expect(out.results[0].correct).toBe(true);
   });
 });
+
+/*
+  2026-08-12. 순서배열·문장삽입은 정답이 지문에 달려 있어 답란만 봐서는
+  알 수 없습니다. **사람이 시험마다 정답지를 한 번 등록**하면 그때부터
+  채점됩니다(§13.42).
+
+  여기서 재는 것은 그 정답지가 **실제로 채점 경로에 끼어드는가**입니다.
+  §13.34에서 만들어 놓고 안 부른 적이 있어서, 이번에는 흐름으로 고정합니다.
+*/
+describe("사람이 등록한 정답지", () => {
+  const KEY: ExamRef = {
+    fingerprint: "key:ch13문법추가시험",
+    title: "Ch.13 문법 추가시험",
+    // 정답지에는 제시어가 없습니다 — 번호와 정답뿐입니다.
+    items: [
+      { no: "1", prompt: "", direction: "ko2en", expected: "(C)-(A)-(B)" },
+      { no: "2", prompt: "", direction: "ko2en", expected: "③" },
+    ],
+  };
+  const withKey = (k: ExamRef | null): RefStore => ({
+    async get() {
+      return null;
+    },
+    async byTitle() {
+      return k;
+    },
+    async save() {},
+  });
+
+  it("정답과 똑같이 쓴 기호 답은 **모델을 안 부르고** 코드가 정답 처리합니다", async () => {
+    const t = transcript([item("1", "(C)-(A)-(B)"), item("2", "③")], "Ch.13 문법 추가시험");
+    const { client, calls } = fake(() => ({ results: [] }));
+
+    const out = await judgeSheet(
+      client,
+      { transcript: t, pages: 1, strictSpelling: false, useRefs: false, sheetId: "s1" },
+      withKey(KEY),
+    );
+
+    expect(calls).toHaveLength(0);
+    expect(out.usedRef).toBe(true);
+    expect(out.unjudged).toBe(0);
+    expect(out.results.every((r) => r.correct)).toBe(true);
+  });
+
+  it("다르게 쓴 것만 모델이 봅니다", async () => {
+    const t = transcript([item("1", "(C)-(A)-(B)"), item("2", "②")], "Ch.13 문법 추가시험");
+    const { client, calls } = fake(() => ({ results: [{ no: "2", correct: false, note: "" }] }));
+
+    const out = await judgeSheet(
+      client,
+      { transcript: t, pages: 1, strictSpelling: false, useRefs: false, sheetId: "s2" },
+      withKey(KEY),
+    );
+
+    expect(out.judgedByModel).toBe(1);
+    expect(calls[0].text).toContain("②");
+    expect(out.results.find((r) => r.no === "1")?.correct).toBe(true);
+  });
+
+  it("🔴 절감 스위치가 꺼져 있어도 정답지는 씁니다 — 값이 아니라 근거입니다", async () => {
+    const t = transcript([item("1", "(C)-(A)-(B)"), item("2", "③")], "Ch.13 문법 추가시험");
+    const { client, calls } = fake(() => ({ results: [] }));
+
+    const out = await judgeSheet(
+      client,
+      { transcript: t, pages: 1, strictSpelling: false, useRefs: false, sheetId: "s3" },
+      withKey(KEY),
+    );
+
+    expect(out.usedRef).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("정답지가 없으면 지금까지처럼 갑니다", async () => {
+    const t = transcript([item("1", "(C)-(A)-(B)")], "등록 안 된 시험");
+    const { client, calls } = fake(() => ({
+      results: [{ no: "1", correct: true, expected: "(C)-(A)-(B)", note: "" }],
+    }));
+
+    const out = await judgeSheet(
+      client,
+      { transcript: t, pages: 1, strictSpelling: false, useRefs: false, sheetId: "s4" },
+      withKey(null),
+    );
+
+    expect(out.usedRef).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+});

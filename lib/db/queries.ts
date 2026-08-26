@@ -3,9 +3,11 @@ import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
 import { normalizeGrading, type Effort } from "@/lib/grading/provider";
 import type { RefStore } from "@/lib/grading/pipeline";
+import { keyAsReference, keySlug } from "@/lib/grading/reference";
 import {
   keepName,
   toItemRows,
+  type AnswerKeyRow,
   type ExamRefRow,
   type ItemRow,
   type ModelTrialRow,
@@ -222,10 +224,70 @@ export function examRefs(db: SupabaseClient): RefStore {
       const row = await getExamRef(db, fingerprint);
       return row ? { fingerprint: row.fingerprint, title: row.title, items: row.items } : null;
     },
+    // 사람이 등록한 정답지. 있으면 이것이 이깁니다.
+    async byTitle(title) {
+      const k = await answerKeyFor(db, title);
+      return k ? keyAsReference(k) : null;
+    },
     async save(ref, sourceSheet) {
       await saveExamRef(db, { ...ref, source_sheet: sourceSheet });
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// 정답지 (docs/13 §13.42)
+// ---------------------------------------------------------------------------
+
+/** 이 제목의 정답지. 없으면 null — 지금까지처럼 모델이 판정합니다. */
+export async function answerKeyFor(db: SupabaseClient, title: string): Promise<AnswerKeyRow | null> {
+  const slug = keySlug(title);
+  if (!slug) return null;
+  const res = await db.from("answer_keys").select("*").eq("slug", slug).maybeSingle();
+  // 표가 아직 없으면(마이그레이션 지연) 정답지 없이 갑니다.
+  if (res.error) {
+    console.error("[answer_keys]", res.error.message);
+    return null;
+  }
+  return (res.data as AnswerKeyRow) ?? null;
+}
+
+export async function listAnswerKeys(db: SupabaseClient): Promise<AnswerKeyRow[]> {
+  return all<AnswerKeyRow>(
+    (a, b) => db.from("answer_keys").select("*").order("updated_at", { ascending: false }).range(a, b),
+    "정답지 목록",
+  );
+}
+
+/**
+ * 정답지를 등록합니다. **같은 제목이면 덮어씁니다.**
+ *
+ * 참조(`saveExamRef`)와 반대입니다. 저쪽은 먼저 것을 지키는데, 이쪽은
+ * **사람이 일부러 다시 등록한 것**이라 새 것이 뜻입니다 — 잘못 읽힌 정답을
+ * 고치는 길이 이것뿐입니다.
+ */
+export async function saveAnswerKey(
+  db: SupabaseClient,
+  k: { title: string; items: { no: string; expected: string }[]; note?: string },
+): Promise<void> {
+  const slug = keySlug(k.title);
+  if (!slug) throw new Error("시험 제목을 적어 주십시오. 제목으로 답안지와 맞춥니다.");
+  if (!k.items.length) throw new Error("정답이 하나도 없습니다.");
+  const { data: u } = await db.auth.getUser();
+  const res = await db.from("answer_keys").upsert({
+    slug,
+    title: k.title.trim(),
+    items: k.items,
+    note: k.note ?? "",
+    created_by: u.user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  });
+  if (res.error) throw new Error(`정답지 저장: ${res.error.message}`);
+}
+
+export async function deleteAnswerKey(db: SupabaseClient, slug: string): Promise<void> {
+  const res = await db.from("answer_keys").delete().eq("slug", slug);
+  if (res.error) throw new Error(`정답지 삭제: ${res.error.message}`);
 }
 
 /** 관리자가 채점 모델을 바꿉니다. **다음 답안지부터 적용됩니다.** */

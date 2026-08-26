@@ -20,6 +20,14 @@ import type { JudgeResult, Transcript, Usage, Warning } from "./types";
 /** 참조 저장소. 실제로는 `exam_refs` 표이고, 테스트에서는 Map입니다. */
 export interface RefStore {
   get(fingerprint: string): Promise<ExamRef | null>;
+  /**
+   * **사람이 등록한 정답지**(docs/13 §13.42). 제목으로 찾습니다.
+   *
+   * 프로그램이 스스로 만든 참조보다 **먼저** 봅니다 — 근거가 편의를
+   * 이깁니다. 그리고 절감 스위치(`useRefs`)와 무관하게 늘 봅니다. 이건
+   * 값을 아끼는 장치가 아니라 **정답을 어디서 얻느냐**의 문제입니다.
+   */
+  byTitle?(title: string): Promise<ExamRef | null>;
   save(ref: ExamRef, sourceSheet: string): Promise<void>;
 }
 
@@ -63,14 +71,26 @@ export async function judgeSheet(
 ): Promise<JudgedSheet> {
   const { transcript, pages, strictSpelling, useRefs, sheetId, opts } = input;
 
+  /*
+    🔴 **정답지가 먼저입니다.**
+
+    순서배열·문장삽입처럼 정답이 지문에 달린 문항은 답란만 봐서는 알 수
+    없습니다(§13.40). 사람이 시험마다 한 번 등록해 두면 그때부터 채점됩니다.
+    절감 스위치와 무관하게 늘 찾습니다 — 이건 값이 아니라 근거입니다.
+  */
+  const keyed = refs.byTitle ? await refs.byTitle(transcript.sheet?.title ?? "") : null;
   const fingerprint = useRefs ? refFingerprint(transcript) : null;
-  const ref = fingerprint ? await refs.get(fingerprint) : null;
+  const ref = keyed ?? (fingerprint ? await refs.get(fingerprint) : null);
 
   /*
     참조가 있으면 제시어 대조가 **독립된 기준**을 갖습니다. 참조가 없을 때의
     밀림 검출은 답안지 자기 자신만 보고 판단합니다.
+
+    다만 **정답지에는 제시어가 없습니다.** 빈 제시어로 대조하면 모든 문항이
+    밀린 것처럼 보입니다 — 있는 것만 씁니다.
   */
-  const warnings = checkDrift(transcript, ref ? refKey(ref) : undefined, pages);
+  const key = ref && ref.items.some((i) => i.prompt) ? refKey(ref) : undefined;
+  const warnings = checkDrift(transcript, key, pages);
   const missing = missingCount(transcript);
   const usage: Usage[] = [];
 

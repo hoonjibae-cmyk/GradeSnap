@@ -69,6 +69,22 @@ export interface ExamRefRow {
 }
 
 /**
+ * 사람이 등록한 정답지(docs/13 §13.42).
+ *
+ * `ExamRefRow`(프로그램이 스스로 만든 참조)와 **다른 표**입니다. 저쪽은
+ * 편의고 이쪽은 근거입니다 — "이 정답은 누가 정했나"에 답할 수 있어야 합니다.
+ */
+export interface AnswerKeyRow {
+  slug: string;
+  title: string;
+  items: { no: string; expected: string }[];
+  note: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
  * 돈이 나간 호출 하나. `sheets`와 겹치는 것 같지만 다른 사실입니다 —
  * 저쪽은 **무엇을 채점했는가**, 이쪽은 **누가 언제 돈을 썼는가**입니다.
  * 특히 '빠른 시험'은 답안지 행이 없어 **여기가 유일한 기록**입니다.

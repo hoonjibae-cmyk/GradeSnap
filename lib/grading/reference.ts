@@ -146,3 +146,38 @@ export function buildReference(
   if (!items.length) return null;
   return { fingerprint, title: t.sheet.title, items };
 }
+
+// ---------------------------------------------------------------------------
+// 사람이 등록한 정답지 (docs/13 §13.42)
+// ---------------------------------------------------------------------------
+
+/**
+ * 시험을 가리키는 값. **제목만** 씁니다.
+ *
+ * `refFingerprint`는 제목에 문항 번호 목록까지 붙입니다. 프로그램이 스스로
+ * 만든 참조에는 그게 맞습니다 — 틀린 참조가 번지느니 안 붙는 편이 낫기
+ * 때문입니다.
+ *
+ * **사람이 등록한 정답지는 반대입니다.** 애써 등록했는데 번호 하나가 다르게
+ * 읽혔다고 조용히 무시되면, 그 사람은 프로그램이 고장 났다고 생각합니다.
+ * 그래서 제목만 봅니다.
+ */
+export const keySlug = (title: string): string | null => norm(title) || null;
+
+/**
+ * 등록된 정답지를 **참조와 같은 모양**으로 바꿉니다.
+ *
+ * 이렇게 하면 아래 흐름이 그대로 돌아갑니다 — 정답과 똑같이 쓴 답은 코드가
+ * 판정하고(`applyReference`), 다르게 쓴 것만 모델이 봅니다(`judgeWithKey`).
+ * 순서배열처럼 **정답이 기호인 문항은 사실상 전부 코드가 끝냅니다.**
+ *
+ * 제시어(prompt)는 비워 둡니다. 정답지에는 없고, 없으면 `applyReference`가
+ * 제시어 대조를 건너뜁니다 — 있는 척하면 밀림 경보가 헛돕니다.
+ */
+export function keyAsReference(k: { slug: string; title: string; items: { no: string; expected: string }[] }): ExamRef {
+  return {
+    fingerprint: `key:${k.slug}`,
+    title: k.title,
+    items: k.items.map((i) => ({ no: i.no, prompt: "", direction: "ko2en" as Direction, expected: i.expected })),
+  };
+}

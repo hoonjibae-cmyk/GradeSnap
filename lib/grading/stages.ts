@@ -1,6 +1,6 @@
 import type { CallOptions, ImageInput, ModelClient } from "./provider";
-import { JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeKeySystem, judgeSystem } from "./prompts";
-import { JUDGE_KEY_SCHEMA, JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
+import { ANSWER_KEY_SYSTEM, JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeKeySystem, judgeSystem } from "./prompts";
+import { ANSWER_KEY_SCHEMA, JUDGE_KEY_SCHEMA, JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
 import { ITEM_KEYS, RESULT_KEYS, compactJudgeSchema, compactTranscribeSchema, expand } from "./compact";
 import type { Item, JudgeResult, MarkReading, Sheet, Transcript, Usage } from "./types";
 
@@ -191,3 +191,30 @@ export async function judgeWithKey(
 }
 
 export { JUDGE_SYSTEM };
+
+/**
+ * **정답지 사진 한 장을 읽습니다.**
+ *
+ * 학생 답안지가 아니라 인쇄된 정답표입니다. 손글씨가 아니라 활자라 전사가
+ * 훨씬 쉽고, 무엇보다 **시험 하나에 한 번만** 합니다.
+ *
+ * 읽은 결과를 그대로 쓰지 않습니다 — 화면이 표로 보여주고 **사람이 확인한
+ * 뒤에** 저장합니다. 정답지가 틀리면 그 시험을 본 반 전체가 같은 오류로
+ * 채점되기 때문입니다.
+ */
+export async function readAnswerKey(
+  client: ModelClient,
+  image: ImageInput,
+  opts?: CallOptions,
+): Promise<{ title: string; items: { no: string; expected: string }[]; usage: Usage }> {
+  const { data, usage } = await client.callJson<{ title: string; items: { no: string; expected: string }[] }>(
+    {
+      system: ANSWER_KEY_SYSTEM,
+      text: "이 정답지의 문항 번호와 정답을 옮겨 적으십시오.",
+      images: [image],
+      schema: ANSWER_KEY_SCHEMA,
+    },
+    opts,
+  );
+  return { title: (data.title ?? "").trim(), items: data.items ?? [], usage };
+}

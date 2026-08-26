@@ -112,3 +112,30 @@ export const JUDGE_KEY_SCHEMA = {
   required: ["results"],
   additionalProperties: false,
 } as const;
+
+/**
+ * 정답지 읽기의 출력.
+ *
+ * 학생 답안지 스키마와 **일부러 다릅니다.** 여기에는 blank·legible·erased가
+ * 없습니다 — 인쇄물이라 그런 것이 없고, 칸을 두면 모델이 채우려 듭니다.
+ */
+export const ANSWER_KEY_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string", description: "정답지에 인쇄된 시험 제목. 없으면 빈 문자열" },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          no: { type: "string", description: "문항 번호" },
+          expected: { type: "string", description: "그 문항의 정답. 인쇄된 그대로" },
+        },
+        required: ["no", "expected"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["title", "items"],
+  additionalProperties: false,
+} as const;
