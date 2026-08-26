@@ -24,6 +24,38 @@ import {
  * 마십시오 — 상태 이름 하나 바뀌면 어디를 고쳐야 하는지 알 수 없게 됩니다.
  */
 
+/**
+ * 🔴 **1000줄 벽.**
+ *
+ * Supabase(PostgREST)는 한 번에 **최대 1000줄**만 돌려줍니다. 더 있으면
+ * 오류가 아니라 **조용히 잘립니다.** 2026-08-12에 「판정 불가 분석」이
+ * 정확히 `0 / 1000 문항`으로 떴고, 그 1000은 데이터가 아니라 **벽이었습니다.**
+ *
+ * 잘리는 방식이 더 나쁩니다. `order("seq")`로 가져오면 답안지마다 앞쪽
+ * 문항부터 채워지므로, **모든 시험지의 뒤쪽 문항이 통째로 사라집니다.**
+ * 순서배열·문장삽입은 대개 시험지 뒤쪽에 있습니다 — 찾으려던 것이 정확히
+ * 안 보이는 자리에 있었습니다.
+ *
+ * 이 학원 규모(월 12,600장)에서는 문항·지출·오답 어느 것이든 하루치도
+ * 1000을 넘깁니다. **화면이 조용히 적게 말하면 비용도 채점도 못 믿습니다.**
+ */
+const PAGE = 1000;
+
+async function all<T>(
+  q: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  what: string,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const res = await q(from, from + PAGE - 1);
+    if (res.error) throw new Error(`${what}: ${res.error.message}`);
+    const rows = (res.data ?? []) as T[];
+    out.push(...rows);
+    // 마지막 쪽은 덜 찹니다. 딱 맞게 찼으면 다음 쪽이 있을 수 있습니다.
+    if (rows.length < PAGE) return out;
+  }
+}
+
 /** 던지면 던진 대로 올립니다. 조용히 빈 값을 돌려주면 화면이 거짓말을 합니다. */
 function ok<T>(res: { data: T | null; error: { message: string } | null }, what: string): T {
   if (res.error) throw new Error(`${what}: ${res.error.message}`);
@@ -238,15 +270,17 @@ export async function recordUsage(
 
 /** 기간 안의 사용 기록. 관리자는 전부, 나머지는 자기 것만 보입니다(RLS). */
 export async function usageBetween(db: SupabaseClient, fromDay: string, toDay: string): Promise<UsageEventRow[]> {
-  return ok(
-    await db
-      .from("usage_events")
-      .select("*")
-      .gte("created_at", `${fromDay}T00:00:00`)
-      .lte("created_at", `${toDay}T23:59:59.999`)
-      .order("created_at", { ascending: false }),
+  return all<UsageEventRow>(
+    (a, b) =>
+      db
+        .from("usage_events")
+        .select("*")
+        .gte("created_at", `${fromDay}T00:00:00`)
+        .lte("created_at", `${toDay}T23:59:59.999`)
+        .order("created_at", { ascending: false })
+        .range(a, b),
     "사용 기록",
-  ) as UsageEventRow[];
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -343,10 +377,17 @@ function base64ToBlob(b64: string, type: string): Blob {
 export async function sheetsOn(db: SupabaseClient, day: string): Promise<SheetRow[]> {
   const from = `${day}T00:00:00`;
   const to = `${day}T23:59:59.999`;
-  return ok(
-    await db.from("sheets").select("*").gte("created_at", from).lte("created_at", to).order("created_at", { ascending: false }),
+  return all<SheetRow>(
+    (a, b) =>
+      db
+        .from("sheets")
+        .select("*")
+        .gte("created_at", from)
+        .lte("created_at", to)
+        .order("created_at", { ascending: false })
+        .range(a, b),
     "접수 목록",
-  ) as SheetRow[];
+  );
 }
 
 /**
@@ -356,16 +397,18 @@ export async function sheetsOn(db: SupabaseClient, day: string): Promise<SheetRo
  * 토큰을 봐야 알 수 있고, 그건 `sheets.token_usage`에만 있습니다.
  */
 export async function gradedBetween(db: SupabaseClient, fromDay: string, toDay: string): Promise<SheetRow[]> {
-  return ok(
-    await db
-      .from("sheets")
-      .select("*")
-      .gte("created_at", `${fromDay}T00:00:00`)
-      .lte("created_at", `${toDay}T23:59:59.999`)
-      .not("graded_at", "is", null)
-      .order("created_at", { ascending: false }),
+  return all<SheetRow>(
+    (a, b) =>
+      db
+        .from("sheets")
+        .select("*")
+        .gte("created_at", `${fromDay}T00:00:00`)
+        .lte("created_at", `${toDay}T23:59:59.999`)
+        .not("graded_at", "is", null)
+        .order("created_at", { ascending: false })
+        .range(a, b),
     "채점 기록",
-  ) as SheetRow[];
+  );
 }
 
 /**
@@ -375,10 +418,10 @@ export async function gradedBetween(db: SupabaseClient, fromDay: string, toDay: 
  * "명단이 아직 덜 됐다"를 알 수 있습니다. 거르는 것은 화면이 합니다.
  */
 export async function wrongItemsOn(db: SupabaseClient, day: string): Promise<WrongItemRow[]> {
-  return ok(
-    await db.from("wrong_items").select("*").eq("received_on", day).order("seq"),
+  return all<WrongItemRow>(
+    (a, b) => db.from("wrong_items").select("*").eq("received_on", day).order("seq").range(a, b),
     "오답 목록",
-  ) as WrongItemRow[];
+  );
 }
 
 export async function getSheet(db: SupabaseClient, id: string): Promise<SheetRow> {
@@ -392,7 +435,11 @@ export async function itemsOf(db: SupabaseClient, sheetId: string): Promise<Item
 /** 여러 답안지의 문항을 한 번에. 모델 비교 화면이 장마다 질의하지 않도록. */
 export async function itemsFor(db: SupabaseClient, sheetIds: string[]): Promise<ItemRow[]> {
   if (!sheetIds.length) return [];
-  return ok(await db.from("items").select("*").in("sheet_id", sheetIds).order("seq"), "문항") as ItemRow[];
+  // 답안지 일곱 장이면 벌써 1000문항입니다. **한 쪽으로 안 끝납니다.**
+  return all<ItemRow>(
+    (from, to) => db.from("items").select("*").in("sheet_id", sheetIds).order("seq").range(from, to),
+    "문항",
+  );
 }
 
 /** 사진을 잠깐 볼 수 있는 주소. 비공개 버킷이라 서명 URL로만 봅니다. */
@@ -552,10 +599,14 @@ export async function pagesOf(db: SupabaseClient, sheetId: string): Promise<Shee
  */
 export async function pagesFor(db: SupabaseClient, sheetIds: string[]): Promise<SheetPageRow[]> {
   if (!sheetIds.length) return [];
-  return ok(
-    await db.from("sheet_pages").select("*").in("sheet_id", sheetIds).is("purged_at", null),
+  /*
+    `.limit()`으로는 1000줄 벽을 못 넘습니다 — 서버가 그 위에서 다시 자릅니다.
+    넘는 방법은 쪽을 나눠 여러 번 묻는 것뿐입니다.
+  */
+  return all<SheetPageRow>(
+    (a, b) => db.from("sheet_pages").select("*").in("sheet_id", sheetIds).is("purged_at", null).range(a, b),
     "사진 기록",
-  ) as SheetPageRow[];
+  );
 }
 
 /** 스토리지에서 내려받아 base64로. 모델에 보낼 모양 그대로입니다. */
@@ -657,10 +708,11 @@ export async function purgeExpired(admin: SupabaseClient, batch = 100, maxRounds
 /** 그날 답안지들에 대해 돌려본 기록. 최신 것이 앞에 옵니다. */
 export async function trialsOn(db: SupabaseClient, sheetIds: string[]): Promise<ModelTrialRow[]> {
   if (!sheetIds.length) return [];
-  return ok(
-    await db.from("model_trials").select("*").in("sheet_id", sheetIds).order("created_at", { ascending: false }),
+  return all<ModelTrialRow>(
+    (a, b) =>
+      db.from("model_trials").select("*").in("sheet_id", sheetIds).order("created_at", { ascending: false }).range(a, b),
     "실험 기록",
-  ) as ModelTrialRow[];
+  );
 }
 
 export async function saveTrial(
