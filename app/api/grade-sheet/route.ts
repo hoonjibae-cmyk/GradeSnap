@@ -3,6 +3,7 @@ import { anthropic, costUsd } from "@/lib/grading/client";
 import { compare } from "@/lib/grading/compare";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { transcribe } from "@/lib/grading/stages";
+import { mapLimit } from "@/lib/parallel";
 import { judgeSheet } from "@/lib/grading/pipeline";
 import { splitUnjudged } from "@/lib/grading/unjudged";
 import { bearer, userClient } from "@/lib/db/client";
@@ -19,6 +20,16 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+/**
+ * 한 답안지 안에서 **동시에 읽을 쪽 수**(docs/13 §13.47).
+ *
+ * 흔한 장수(1~2쪽)는 어차피 전부 동시라 이 값이 안 걸립니다. 드물게 6쪽,
+ * 8쪽이 올라올 때만 나눠 보냅니다 — 브라우저가 답안지 4장을 동시에
+ * 돌리므로(`LANES`), 여기까지 무제한이면 한꺼번에 수십 개가 나가 429를
+ * 맞습니다. **얻을 것은 다 얻고 사고만 막는 자리**입니다.
+ */
+const PAGE_LANES = 4;
 
 /**
  * 답안지 **한 장을 집어 채점하고 저장**합니다.
@@ -64,20 +75,40 @@ export async function POST(req: Request) {
   // 채로 10분을 기다렸다 다시 잡히고, 조교는 왜 안 되는지 알 수 없습니다.
   const id = sheet.id;
   try {
+    /*
+      벽시계로 잽니다. 쪽을 동시에 읽기 시작한 뒤로는 **호출 시간을 더한
+      값이 실제로 걸린 시간이 아닙니다**(§13.47) — 겹쳐 도니까요. 그대로
+      두면 비용 화면이 한 번도 일어난 적 없는 시간을 말하고, 무엇보다
+      **빨라진 것이 화면에 안 나타납니다.**
+    */
+    const t0 = Date.now();
     const client = anthropic();
     // 어떤 모델로 채점할지는 **관리 화면의 설정**입니다. 환경 변수가 아닙니다.
     const { useRefs, ...opts } = await gradingOptions(db);
     const pages = await pagesOf(db, id);
     if (!pages.length) throw new Error("사진이 없습니다. 다시 접수해 주십시오.");
 
-    const parts = [];
-    const usage = [];
-    for (const p of pages) {
+    /*
+      🔴 **쪽을 동시에 읽습니다**(docs/13 §13.47).
+
+      쪽마다 읽는 일은 서로 아무 상관이 없습니다. 그런데 여기가 차례로
+      기다리고 있었고, 시범 운용에서 가장 많이 나온 의견인 "채점이 느리다"의
+      대부분이 이 줄이었습니다. 2쪽이면 전사 시간이 그대로 두 배입니다.
+
+      **품질에는 영향이 0입니다.** 보내는 내용도 받는 내용도 똑같고,
+      `mapLimit`이 결과를 들어간 차례대로 돌려주므로 아래 `mergeTranscripts`가
+      보는 것도 예전과 한 글자도 다르지 않습니다. 바뀌는 것은 걸리는 시간뿐입니다.
+
+      뚜껑(`PAGE_LANES`)이 있는 이유는 `lib/parallel.ts`에 적어 뒀습니다 —
+      브라우저가 이미 답안지 4장을 동시에 돌리고 있어서, 여기까지 무제한으로
+      열면 429를 맞습니다.
+    */
+    const read = await mapLimit(pages, PAGE_LANES, async (p) => {
       const data = await downloadPage(db, p.storage_path);
-      const r = await transcribe(client, { mediaType: "image/jpeg", data }, opts);
-      parts.push(r.transcript);
-      usage.push(r.usage);
-    }
+      return transcribe(client, { mediaType: "image/jpeg", data }, opts);
+    });
+    const parts = read.map((r) => r.transcript);
+    const usage = read.map((r) => r.usage);
 
     const transcript = mergeTranscripts(parts);
     // 조교가 커트라인을 적어뒀으면 그게 우선입니다 — 빨간펜이 머리말을 덮는 경우입니다.
@@ -147,7 +178,7 @@ export async function POST(req: Request) {
       sheet_id: id,
       pages: pages.length,
       cost_usd: cost,
-      latency_ms: usage.reduce((a, u) => a + u.latencyMs, 0),
+      latency_ms: Date.now() - t0,
       model: usage[0].model,
       effort: usage[0].effort ?? null,
       ok: true,

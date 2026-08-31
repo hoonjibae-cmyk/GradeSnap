@@ -114,6 +114,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const pages = await pagesOf(db, id);
     if (!pages.length) throw new Error("사진이 없습니다. 90일이 지나 지워졌을 수 있습니다.");
 
+    /*
+      🔴 **여기만 일부러 차례로 둡니다**(§13.47).
+
+      실제 채점(`grade-sheet`)은 쪽을 동시에 읽도록 바꿨습니다. 그런데 이
+      화면은 모델을 **견주는** 자리이고, 견주는 값이 `latency_ms`입니다.
+      여기를 같이 바꾸면 **오늘 잰 값과 지난주에 잰 값을 못 비교합니다** —
+      모델이 빨라진 것인지 읽는 방식이 바뀐 것인지 구별할 수가 없습니다.
+
+      빨라져서 좋을 자리가 아닙니다. **자를 바꾸지 않는 것**이 이 화면의 일입니다.
+    */
     const parts = [];
     const usage = [];
     for (const p of pages) {

@@ -4,6 +4,7 @@ import { checkDrift, missingCount } from "@/lib/grading/drift";
 import { compare } from "@/lib/grading/compare";
 import { mergeTranscripts } from "@/lib/grading/merge";
 import { judge, transcribe } from "@/lib/grading/stages";
+import { mapLimit } from "@/lib/parallel";
 import { bearer, userClient } from "@/lib/db/client";
 import { gradingOptions, me, recordUsage } from "@/lib/db/queries";
 import type { JudgeResult, Transcript, Usage, Warning } from "@/lib/grading/types";
@@ -14,6 +15,9 @@ export const runtime = "nodejs";
  * **여러 장을 한 요청에 담으면 넘겨서 죽습니다.** 장 하나에 호출 하나입니다.
  */
 export const maxDuration = 300;
+
+/** 동시에 읽을 장 수. `app/api/grade-sheet/route.ts`와 같은 이유입니다(§13.47). */
+const PAGE_LANES = 4;
 
 export interface GradeResponse {
   transcript: Transcript;
@@ -77,21 +81,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "사진이 없습니다." }, { status: 400 });
   }
 
+  const t0 = Date.now();
   try {
     const client = anthropic();
     // 빠른 시험도 **실제 채점과 같은 설정**을 씁니다. 다르면 여기서 본 결과가
     // 실제 채점의 예고가 못 됩니다.
     const opts = await gradingOptions(db);
 
-    // 장마다 따로 전사합니다. 한 요청에 여러 장을 담아도 **모델 호출은 장당 하나**라야
-    // Vercel의 300초 안에 들어옵니다.
-    const parts = [];
-    const usage = [];
-    for (const im of images) {
-      const r = await transcribe(client, { mediaType: im.mediaType ?? "image/jpeg", data: im.data }, opts);
-      parts.push(r.transcript);
-      usage.push(r.usage);
-    }
+    /*
+      장마다 따로 전사합니다. 한 요청에 여러 장을 담아도 **모델 호출은 장당
+      하나**라야 Vercel의 300초 안에 들어옵니다.
+
+      그리고 **동시에 보냅니다**(§13.47). 장끼리 서로 기다릴 이유가 없고,
+      여기는 조교가 화면 앞에서 기다리고 있는 자리라 더 그렇습니다.
+      `mapLimit`이 순서를 지켜 돌려주므로 `mergeTranscripts`가 보는 것은
+      예전과 같습니다.
+    */
+    const read = await mapLimit(images, PAGE_LANES, (im) =>
+      transcribe(client, { mediaType: im.mediaType ?? "image/jpeg", data: im.data }, opts),
+    );
+    const parts = read.map((r) => r.transcript);
+    const usage = read.map((r) => r.usage);
     const transcript = mergeTranscripts(parts);
     if (body.cutLineOverride?.trim()) transcript.sheet.cutLine = body.cutLineOverride.trim();
 
@@ -111,7 +121,8 @@ export async function POST(req: Request) {
       sheet_id: null,
       pages: parts.length,
       cost_usd: cost,
-      latency_ms: usage.reduce((a, u) => a + u.latencyMs, 0),
+      // 벽시계입니다 — 장을 겹쳐 읽으므로 호출 시간의 합은 실제로 걸린 시간이 아닙니다.
+      latency_ms: Date.now() - t0,
       model: usage[0].model,
       effort: usage[0].effort ?? null,
       ok: true,
