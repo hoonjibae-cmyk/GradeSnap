@@ -46,12 +46,27 @@ export interface DriveConfig {
  * 꺼지고 나머지는 그대로 돕니다. 사진으로 올리는 길이 그대로 있습니다.
  */
 export function driveConfig(): DriveConfig | null {
-  const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? "").trim();
-  // Vercel 환경 변수는 줄바꿈을 못 넣는 경우가 있어 `\n`으로 적습니다.
-  const key = (process.env.GOOGLE_SERVICE_ACCOUNT_KEY ?? "").replace(/\\n/g, "\n").trim();
-  const folderId = (process.env.DRIVE_FOLDER_ID ?? "").trim();
+  const email = unquote(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL);
+  /*
+    JSON 파일에서 값을 복사할 때 **따옴표까지 같이 딸려 옵니다.** 그리고
+    Vercel 환경 변수 칸은 줄바꿈을 못 받는 경우가 있어 `\n`이 두 글자
+    그대로 들어옵니다. 둘 다 여기서 되돌립니다.
+
+    이걸 안 하면 열쇠가 통째로 못 읽히는데, 화면에 뜨는 것은 "서명 실패"
+    같은 말이라 **사람은 자기가 뭘 잘못했는지 알 길이 없습니다.** 설정을
+    한 번만 하는 기능일수록 그 한 번에서 막히면 안 됩니다.
+  */
+  const key = unquote(process.env.GOOGLE_SERVICE_ACCOUNT_KEY).replace(/\\n/g, "\n");
+  const folderId = unquote(process.env.DRIVE_FOLDER_ID);
   if (!email || !key || !folderId) return null;
   return { email, key, folderId };
+}
+
+/** 앞뒤 공백과 **감싼 따옴표**를 뗍니다. */
+export function unquote(v: string | undefined): string {
+  const s = (v ?? "").trim();
+  const quoted = s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")));
+  return quoted ? s.slice(1, -1).trim() : s;
 }
 
 const b64url = (b: Buffer | string) =>
