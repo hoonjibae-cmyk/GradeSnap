@@ -86,6 +86,23 @@ export interface AnswerKeyRow {
    */
   items: { no: string; expected: string; prompt?: string }[];
   note: string;
+  /**
+   * 구글 폴더의 **어느 파일에서 왔는가**(§13.46). 사진으로 올렸으면 null.
+   *
+   * 이걸로 「이미 등록한 파일」을 목록에서 뺍니다. 제목이 아니라 파일을
+   * 가리키는 이유는, 제목은 사람이 화면에서 고칠 수 있고 고치는 순간
+   * 연결이 끊기기 때문입니다.
+   */
+  source_file_id: string | null;
+  source_name: string | null;
+  /**
+   * 그 파일을 읽은 시점의 **파일 수정 시각**.
+   *
+   * 선생님이 정답지를 고쳐 다시 올리면 이보다 나중이 되고, 그러면 화면이
+   * 그 파일을 다시 꺼내 놓습니다. 이게 없으면 **고쳐진 정답지가 영영 안
+   * 보입니다** — 원래 문제보다 나쁩니다.
+   */
+  source_modified: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

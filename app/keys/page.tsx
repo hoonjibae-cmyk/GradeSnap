@@ -6,6 +6,7 @@ import { Bar, Gate } from "@/components/Gate";
 import { deleteAnswerKey, KEY_DAYS, keyDaysLeft, listAnswerKeys, saveAnswerKey } from "@/lib/db/queries";
 import type { AnswerKeyRow, StaffRow } from "@/lib/db/schema";
 import type { DriveFile } from "@/lib/drive/client";
+import { splitRegistered, type Registered } from "@/lib/drive/registered";
 import { readJson } from "@/lib/http";
 import { prepareImage } from "@/lib/image";
 
@@ -47,6 +48,11 @@ function Keys({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [from, setFrom] = useState<string | null>(null);
+  /**
+   * 어느 구글 파일에서 왔는가. 저장할 때 같이 넣습니다(§13.46).
+   * **사진으로 읽으면 null로 되돌립니다** — 안 그러면 엉뚱한 파일이 목록에서 숨습니다.
+   */
+  const [source, setSource] = useState<{ fileId: string; name: string; modified: string } | null>(null);
 
   const load = useCallback(async () => setKeys(await listAnswerKeys(db)), [db]);
   useEffect(() => {
@@ -76,6 +82,7 @@ function Keys({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       if (j.title) setTitle(j.title);
       setItems(j.items ?? []);
       setFrom(`사진 · ${file.name}`);
+      setSource(null);
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -98,6 +105,7 @@ function Keys({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
       if (j.title) setTitle(j.title);
       setItems(j.items ?? []);
       setFrom(`구글 폴더 · ${f.name}`);
+      setSource({ fileId: f.id, name: f.name, modified: f.modifiedTime });
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -113,11 +121,13 @@ function Keys({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
         items: items
           .filter((i) => i.no.trim() && i.expected.trim())
           .map((i) => ({ no: i.no.trim(), expected: i.expected.trim(), prompt: (i.prompt ?? "").trim() })),
+        source,
       });
       setDone(`「${title}」 정답지를 등록했습니다. 이 제목의 답안지부터 적용됩니다.`);
       setTitle("");
       setItems([]);
       setFrom(null);
+      setSource(null);
       await load();
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -154,7 +164,7 @@ function Keys({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
           나오면 옛 정답으로 채점될 수 있어서입니다. 계속 쓰시려면 다시 올리면 됩니다.
         </p>
 
-        <DrivePicker auth={auth} busy={busy} onPick={(f) => void readDrive(f)} onError={onError} />
+        <DrivePicker auth={auth} busy={busy} keys={keys} onPick={(f) => void readDrive(f)} onError={onError} />
 
         <label className="mt-4 block border-t border-slate-200 pt-4">
           <span className="mb-1 block text-sm font-medium">정답지 사진</span>
@@ -260,6 +270,7 @@ function Keys({ db, staff }: { db: SupabaseClient; staff: StaffRow }) {
                   setItems([]);
                   setTitle("");
                   setFrom(null);
+                  setSource(null);
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600"
               >
@@ -321,11 +332,13 @@ const SHOW = 12;
 function DrivePicker({
   auth,
   busy,
+  keys,
   onPick,
-  onError,
 }: {
   auth: () => Promise<{ authorization: string }>;
   busy: boolean;
+  /** 이미 등록된 정답지. **여기 있는 파일은 목록에서 뺍니다**(§13.46). */
+  keys: AnswerKeyRow[];
   onPick: (f: DriveFile) => void;
   onError: (m: string) => void;
 }) {
@@ -365,11 +378,17 @@ function DrivePicker({
 
   const shown = useMemo(() => {
     const needle = q.normalize("NFKC").trim().toLowerCase();
-    const hit = needle
-      ? files.filter((f) => `${f.folder} ${f.name}`.normalize("NFKC").toLowerCase().includes(needle))
-      : files;
-    return { hit, list: hit.slice(0, SHOW) };
-  }, [files, q]);
+    const match = (f: DriveFile) =>
+      !needle || `${f.folder} ${f.name}`.normalize("NFKC").toLowerCase().includes(needle);
+
+    const split = splitRegistered(files.filter(match), keys);
+    /*
+      고쳐진 것을 **맨 위**에 둡니다. 이건 "아직 안 한 일"보다 급합니다 —
+      이미 등록했다고 믿고 있는 정답지가 사실은 옛날 것이라는 뜻이니까요.
+    */
+    const open: (DriveFile & { was?: Registered })[] = [...split.changed, ...split.todo];
+    return { open, list: open.slice(0, SHOW), done: split.done };
+  }, [files, keys, q]);
 
   // 연결 안 됨 · 읽는 중은 조용히 넘어갑니다. 사진 경로가 그대로 있습니다.
   if (state === "off") return null;
@@ -386,7 +405,10 @@ function DrivePicker({
     <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-sm font-medium">구글 폴더에서 가져오기</p>
       <p className="mt-0.5 text-xs text-slate-500">
-        선생님들이 올려 두신 <strong>「답지」 파일</strong>입니다. 최근 것부터 {files.length}개.
+        선생님들이 올려 두신 <strong>「답지」 파일</strong>입니다.{" "}
+        {/* 이미 등록한 것은 세지 않습니다 — 조교가 봐야 할 숫자는 남은 일입니다. */}
+        <strong>아직 등록 안 한 것 {shown.open.length}개</strong>
+        {shown.done.length > 0 && ` · 등록 끝난 것 ${shown.done.length}개`}
       </p>
       {files.length === 0 ? (
         <p className="mt-2 text-xs text-slate-500">
@@ -409,6 +431,16 @@ function DrivePicker({
                     {f.folder || "폴더 없음"} · {f.modifiedTime.slice(0, 10)}
                     {!f.readable && <strong className="ml-1 text-amber-700">PDF가 아님</strong>}
                   </span>
+                  {/*
+                    🔴 등록해 뒀는데 선생님이 그 뒤에 파일을 고친 경우입니다.
+                    숨기면 조교는 이미 했다고 믿고, 반 전체가 옛 정답으로
+                    채점됩니다. 맨 위에 올리고 크게 적습니다.
+                  */}
+                  {f.was && (
+                    <span className="mt-0.5 block text-xs font-medium text-amber-800">
+                      🔶 「{f.was.title}」로 등록해 뒀는데 그 뒤에 파일이 고쳐졌습니다 — 다시 읽으십시오.
+                    </span>
+                  )}
                 </span>
                 <button
                   onClick={() => onPick(f)}
@@ -420,12 +452,47 @@ function DrivePicker({
               </li>
             ))}
           </ul>
-          {shown.hit.length > SHOW && (
+          {shown.open.length > SHOW && (
             <p className="mt-1 text-xs text-slate-500">
-              {shown.hit.length - SHOW}개 더 있습니다 — 위에서 이름으로 좁히십시오.
+              {shown.open.length - SHOW}개 더 있습니다 — 위에서 이름으로 좁히십시오.
             </p>
           )}
-          {shown.hit.length === 0 && <p className="mt-2 text-xs text-slate-500">찾는 이름이 없습니다.</p>}
+          {shown.open.length === 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              {q ? "찾는 이름이 없습니다." : "남은 것이 없습니다 — 폴더의 정답지를 다 등록했습니다."}
+            </p>
+          )}
+
+          {/*
+            등록 끝난 것을 **지우지 않고 접어 둡니다.** 잘못 읽힌 정답지를
+            다시 읽고 싶을 때 그 파일에 닿을 길이 없어지면 안 됩니다.
+          */}
+          {shown.done.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-slate-500">
+                이미 등록한 {shown.done.length}개 보기
+              </summary>
+              <ul className="mt-1 divide-y divide-slate-200">
+                {shown.done.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-2 py-2">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm text-slate-500">{f.name}</span>
+                      <span className="block text-xs text-slate-400">
+                        「{f.was.title}」로 {f.was.at.slice(0, 10)}에 등록
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => onPick(f)}
+                      disabled={busy || !f.readable}
+                      className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 disabled:opacity-30"
+                    >
+                      다시 읽기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </>
       )}
       {/* 읽기만 하고 저장은 안 합니다 — 확인 표가 아래에 뜹니다. */}

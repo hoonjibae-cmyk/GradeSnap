@@ -290,10 +290,18 @@ export async function listAnswerKeys(db: SupabaseClient): Promise<AnswerKeyRow[]
  * **사람이 일부러 다시 등록한 것**이라 새 것이 뜻입니다 — 잘못 읽힌 정답을
  * 고치는 길이 이것뿐입니다.
  */
-export async function saveAnswerKey(
-  db: SupabaseClient,
-  k: { title: string; items: { no: string; expected: string }[]; note?: string },
-): Promise<void> {
+export interface SaveKey {
+  title: string;
+  items: { no: string; expected: string; prompt?: string }[];
+  note?: string;
+  /**
+   * 구글 폴더에서 가져온 것이면 그 파일. **사진으로 올렸으면 안 넘깁니다**
+   * (§13.46) — 그래야 아무 파일도 목록에서 안 가립니다.
+   */
+  source?: { fileId: string; name: string; modified: string } | null;
+}
+
+export async function saveAnswerKey(db: SupabaseClient, k: SaveKey): Promise<void> {
   const slug = keySlug(k.title);
   if (!slug) throw new Error("시험 제목을 적어 주십시오. 제목으로 답안지와 맞춥니다.");
   if (!k.items.length) throw new Error("정답이 하나도 없습니다.");
@@ -303,6 +311,15 @@ export async function saveAnswerKey(
     title: k.title.trim(),
     items: k.items,
     note: k.note ?? "",
+    /*
+      사진으로 올렸으면 **셋 다 비웁니다.** 같은 제목의 정답지를 예전에
+      파일로 등록했다가 이번에 사진으로 다시 올린 경우, 옛 파일 연결이
+      남아 있으면 그 파일이 목록에서 계속 숨습니다. 덮어쓰기가 뜻하는
+      바는 "이번 것이 맞다"입니다.
+    */
+    source_file_id: k.source?.fileId ?? null,
+    source_name: k.source?.name ?? null,
+    source_modified: k.source?.modified ?? null,
     created_by: u.user?.id ?? null,
     updated_at: new Date().toISOString(),
   });

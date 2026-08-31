@@ -100,11 +100,25 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
   let level: { id: string; name: string }[] = [{ id: c.folderId, name: "" }];
 
   for (let depth = 0; depth < MAX_DEPTH && level.length && visited < MAX_FOLDERS; depth++) {
+    const batch = level.slice(0, Math.max(0, MAX_FOLDERS - visited));
+    visited += batch.length;
+
+    /*
+      🔴 **같은 층은 한꺼번에 물어봅니다.**
+
+      처음에는 폴더를 하나씩 차례로 돌았습니다. 선생님 폴더가 열 몇 개인데
+      구글에 한 번 다녀오는 데 몇백 밀리초씩 걸리니, 그게 그대로 더해져
+      화면이 몇 초씩 멈췄습니다 — 원장님이 "로딩이 꽤 걸린다"고 하신 게
+      이것입니다.
+
+      폴더끼리는 서로 기다릴 이유가 없습니다. 한 층을 통째로 보내면
+      **가장 느린 폴더 하나만큼**만 걸립니다.
+    */
+    const kidsPerFolder = await Promise.all(batch.map((f) => childrenOf(c, f.id)));
+
     const next: { id: string; name: string }[] = [];
-    for (const folder of level) {
-      if (visited++ >= MAX_FOLDERS) break;
-      const kids = await childrenOf(c, folder.id);
-      for (const f of kids) {
+    batch.forEach((folder, i) => {
+      for (const f of kidsPerFolder[i]) {
         if (f.mimeType === FOLDER_MIME) {
           // 하위 폴더 이름이 곧 선생님 이름입니다 — 그걸 물려줍니다.
           next.push({ id: f.id, name: folder.name || f.name });
@@ -120,7 +134,7 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
           readable: f.mimeType === PDF,
         });
       }
-    }
+    });
     level = next;
   }
 
