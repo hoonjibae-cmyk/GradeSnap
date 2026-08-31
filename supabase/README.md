@@ -85,6 +85,12 @@ Vercel 프로젝트 → Settings → Environment Variables. `.env.example`과 �
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 같은 곳 | 브라우저에 나갑니다 (정상 — RLS가 막습니다) |
 | `SUPABASE_SERVICE_ROLE_KEY` | 같은 곳 · **service_role** | 🔴 **서버 전용.** RLS를 통째로 우회합니다 |
 | `ANTHROPIC_API_KEY` | console.anthropic.com | 🔴 서버 전용 |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | [docs/17](../docs/17-google-drive.md) | 서버 전용 |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | 같은 곳 | 🔴 **서버 전용.** 개인 열쇠입니다 |
+| `DRIVE_FOLDER_ID` | 정답지 폴더 주소 | 서버 전용 |
+
+구글 셋은 **안 넣어도 됩니다.** 안 넣으면 「구글 폴더에서 가져오기」만 화면에서
+사라지고, 정답지를 사진으로 올리는 길은 그대로입니다.
 
 `SUPABASE_SERVICE_ROLE_KEY`는 **90일 지난 사진을 지우는 정리 작업에서만** 씁니다.
 편하다고 채점 라우트에서 쓰면 RLS가 꺼지고 "누가 확정했나"가 전부 null이 됩니다.

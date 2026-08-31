@@ -3,6 +3,7 @@ import type { PreparedImage } from "@/lib/image";
 import type { JudgeResult, Transcript, Usage, Verdict, Warning } from "@/lib/grading/types";
 import { normalizeGrading, type Effort } from "@/lib/grading/provider";
 import type { RefStore } from "@/lib/grading/pipeline";
+import { matchAnswerKey } from "@/lib/grading/match";
 import { keyAsReference, keySlug } from "@/lib/grading/reference";
 import {
   keepName,
@@ -224,10 +225,33 @@ export function examRefs(db: SupabaseClient): RefStore {
       const row = await getExamRef(db, fingerprint);
       return row ? { fingerprint: row.fingerprint, title: row.title, items: row.items } : null;
     },
-    // 사람이 등록한 정답지. 있으면 이것이 이깁니다.
-    async byTitle(title) {
-      const k = await answerKeyFor(db, title);
-      return k ? keyAsReference(k) : null;
+    /*
+      사람이 등록한 정답지. 있으면 이것이 이깁니다.
+
+      **제목이 똑같은 경우를 먼저 봅니다.** 색인 조회 한 번이고, 실제로
+      대부분 여기서 끝납니다. 목록을 통째로 읽는 것은 그게 빗나갔을 때뿐이라
+      흔한 길은 예전만큼 가볍습니다(§13.45).
+    */
+    async findKey(sheet) {
+      const exact = await answerKeyFor(db, sheet.title);
+      if (exact) {
+        return {
+          ref: keyAsReference(exact),
+          how: "제목",
+          why: `제목이 「${exact.title}」과 같습니다.`,
+          ambiguous: [],
+        };
+      }
+      // 정답지는 한 달이면 지워지므로 목록이 길어질 일이 없습니다(KEY_DAYS).
+      const keys = await listAnswerKeys(db).catch((e) => {
+        console.error("[answer_keys] 목록", e instanceof Error ? e.message : String(e));
+        return [] as AnswerKeyRow[];
+      });
+      if (!keys.length) return { ref: null, ambiguous: [] };
+
+      const { match, ambiguous } = matchAnswerKey(sheet, keys);
+      if (!match) return { ref: null, ambiguous };
+      return { ref: keyAsReference(match.key), how: match.how, why: match.why, ambiguous: [] };
     },
     async save(ref, sourceSheet) {
       await saveExamRef(db, { ...ref, source_sheet: sourceSheet });

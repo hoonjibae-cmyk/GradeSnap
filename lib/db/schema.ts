@@ -77,7 +77,14 @@ export interface ExamRefRow {
 export interface AnswerKeyRow {
   slug: string;
   title: string;
-  items: { no: string; expected: string }[];
+  /**
+   * `prompt`는 **맞추기 전용**입니다(docs/13 §13.45).
+   *
+   * 제목이 어긋났을 때 "제시어가 겹치는가"로 정답지를 찾는 보조 경로가
+   * 이걸 씁니다. 채점에는 안 넣습니다 — 정답지의 제시어 표기와 답안지에
+   * 인쇄된 제시어가 조금만 달라도 밀림 경보가 문항마다 헛돕니다.
+   */
+  items: { no: string; expected: string; prompt?: string }[];
   note: string;
   created_by: string | null;
   created_at: string;

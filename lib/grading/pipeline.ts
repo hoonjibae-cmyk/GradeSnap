@@ -11,23 +11,37 @@
  */
 
 import { checkDrift, missingCount } from "./drift";
+import type { MatchHow, SheetShape } from "./match";
 import { applyReference, buildReference, refFingerprint, refKey, type ExamRef } from "./reference";
 import { judge, judgeWithKey } from "./stages";
 import { isUnjudged, splitUnjudged, unjudgedWarning } from "./unjudged";
 import type { CallOptions, ModelClient } from "./provider";
 import type { JudgeResult, Transcript, Usage, Warning } from "./types";
 
+/** 정답지를 찾아본 결과. **못 찾은 이유까지 나릅니다.** */
+export interface KeyLookup {
+  ref: ExamRef | null;
+  /** 어느 경로로 찾았는가. 제목이 똑같은 것이 아니면 화면에 적습니다. */
+  how?: MatchHow;
+  why?: string;
+  /** 비슷해서 **못 고른** 후보들. 있으면 사람이 제목만 고치면 되는 상황입니다. */
+  ambiguous: { title: string; score: number }[];
+}
+
 /** 참조 저장소. 실제로는 `exam_refs` 표이고, 테스트에서는 Map입니다. */
 export interface RefStore {
   get(fingerprint: string): Promise<ExamRef | null>;
   /**
-   * **사람이 등록한 정답지**(docs/13 §13.42). 제목으로 찾습니다.
+   * **사람이 등록한 정답지**(docs/13 §13.42).
    *
    * 프로그램이 스스로 만든 참조보다 **먼저** 봅니다 — 근거가 편의를
    * 이깁니다. 그리고 절감 스위치(`useRefs`)와 무관하게 늘 봅니다. 이건
    * 값을 아끼는 장치가 아니라 **정답을 어디서 얻느냐**의 문제입니다.
+   *
+   * 제목이 글자까지 같아야 붙던 것을 §13.45에서 세 겹으로 넓혔습니다
+   * (`match.ts`). 그래서 제목만이 아니라 **답안지 모양 전체**를 받습니다.
    */
-  byTitle?(title: string): Promise<ExamRef | null>;
+  findKey?(sheet: SheetShape): Promise<KeyLookup>;
   save(ref: ExamRef, sourceSheet: string): Promise<void>;
 }
 
@@ -78,7 +92,13 @@ export async function judgeSheet(
     없습니다(§13.40). 사람이 시험마다 한 번 등록해 두면 그때부터 채점됩니다.
     절감 스위치와 무관하게 늘 찾습니다 — 이건 값이 아니라 근거입니다.
   */
-  const keyed = refs.byTitle ? await refs.byTitle(transcript.sheet?.title ?? "") : null;
+  const lookup = refs.findKey
+    ? await refs.findKey({
+        title: transcript.sheet?.title ?? "",
+        items: (transcript.items ?? []).map((i) => ({ no: i.no, prompt: i.prompt })),
+      })
+    : null;
+  const keyed = lookup?.ref ?? null;
   const fingerprint = useRefs ? refFingerprint(transcript) : null;
   const ref = keyed ?? (fingerprint ? await refs.get(fingerprint) : null);
 
@@ -90,7 +110,7 @@ export async function judgeSheet(
     밀린 것처럼 보입니다 — 있는 것만 씁니다.
   */
   const key = ref && ref.items.some((i) => i.prompt) ? refKey(ref) : undefined;
-  const warnings = checkDrift(transcript, key, pages);
+  const warnings = [...checkDrift(transcript, key, pages), ...keyNotes(lookup)];
   const missing = missingCount(transcript);
   const usage: Usage[] = [];
 
@@ -153,6 +173,45 @@ export async function judgeSheet(
     judgedByModel: transcript.items.length,
     savedRef,
   };
+}
+
+/**
+ * 정답지를 **어떻게** 찾았는지(또는 왜 못 찾았는지) 화면에 적습니다.
+ *
+ * 제목이 글자까지 같아서 붙은 것은 아무 말도 안 합니다 — 그게 정상입니다.
+ * 나머지 둘은 반드시 말합니다.
+ *
+ *   - **다른 경로로 붙었다.** 조용히 맞히는 것보다 시끄럽게 맞히는 편이
+ *     낫습니다. 잘못 붙었으면 반 전체가 남의 정답으로 채점되는데, 그걸
+ *     알아챌 수 있는 사람은 답안지를 보고 있는 조교뿐입니다.
+ *   - **비슷한 것이 여럿이라 못 골랐다.** 이건 **고칠 수 있는 상황**입니다.
+ *     이름을 대 주면 사람이 제목 한 줄만 맞춰 다시 등록하면 끝납니다.
+ *     이름을 안 대면 "정답 모름"만 뜨고 아무도 이유를 모릅니다.
+ *
+ * 둘 다 `info`입니다 — 참인 안내일 뿐, PASS/FAIL을 막을 일은 아닙니다.
+ * 막아 버리면 이 기능은 켜 놓으나 마나가 됩니다.
+ */
+function keyNotes(lookup: KeyLookup | null): Warning[] {
+  if (!lookup) return [];
+  if (lookup.ref) {
+    if (!lookup.how || lookup.how === "제목") return [];
+    return [
+      {
+        level: "info",
+        text: `🔶 정답지를 「${lookup.how}」로 붙였습니다 — ${lookup.why ?? ""} 다른 시험의 정답지가 아닌지 확인하십시오.`,
+      },
+    ];
+  }
+  if (!lookup.ambiguous.length) return [];
+  const names = lookup.ambiguous.map((a) => `「${a.title}」`).join(", ");
+  return [
+    {
+      level: "info",
+      text:
+        `정답지 ${names}가 비슷해 어느 것인지 정하지 못했습니다. ` +
+        "엉뚱한 정답으로 채점하지 않으려고 하나도 안 썼습니다 — 정답지 화면에서 시험 제목을 답안지와 같게 고쳐 등록하면 채점됩니다.",
+    },
+  ];
 }
 
 /**

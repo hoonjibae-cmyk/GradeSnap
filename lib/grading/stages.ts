@@ -1,5 +1,5 @@
 import type { CallOptions, ImageInput, ModelClient } from "./provider";
-import { ANSWER_KEY_SYSTEM, JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeKeySystem, judgeSystem } from "./prompts";
+import { ANSWER_KEY_SYSTEM, ANSWER_KEY_TEXT_SYSTEM, JUDGE_SYSTEM, MARKS_SYSTEM, TRANSCRIBE_SYSTEM, judgeKeySystem, judgeSystem } from "./prompts";
 import { ANSWER_KEY_SCHEMA, JUDGE_KEY_SCHEMA, JUDGE_SCHEMA, MARKS_SCHEMA, TRANSCRIBE_SCHEMA } from "./schemas";
 import { ITEM_KEYS, RESULT_KEYS, compactJudgeSchema, compactTranscribeSchema, expand } from "./compact";
 import type { Item, JudgeResult, MarkReading, Sheet, Transcript, Usage } from "./types";
@@ -202,16 +202,52 @@ export { JUDGE_SYSTEM };
  * 뒤에** 저장합니다. 정답지가 틀리면 그 시험을 본 반 전체가 같은 오류로
  * 채점되기 때문입니다.
  */
+export interface KeyItem {
+  no: string;
+  expected: string;
+  /** 맞추기 전용. 채점에는 안 씁니다 — `AnswerKeyRow.items` 주석 참고. */
+  prompt?: string;
+}
+
+export interface ReadKey {
+  title: string;
+  items: KeyItem[];
+  usage: Usage;
+}
+
 export async function readAnswerKey(
   client: ModelClient,
   image: ImageInput,
   opts?: CallOptions,
-): Promise<{ title: string; items: { no: string; expected: string }[]; usage: Usage }> {
-  const { data, usage } = await client.callJson<{ title: string; items: { no: string; expected: string }[] }>(
+): Promise<ReadKey> {
+  const { data, usage } = await client.callJson<{ title: string; items: KeyItem[] }>(
     {
       system: ANSWER_KEY_SYSTEM,
       text: "이 정답지의 문항 번호와 정답을 옮겨 적으십시오.",
       images: [image],
+      schema: ANSWER_KEY_SCHEMA,
+    },
+    opts,
+  );
+  return { title: (data.title ?? "").trim(), items: data.items ?? [], usage };
+}
+
+/**
+ * 같은 일을 **PDF에서 꺼낸 글자**로 합니다(§13.45).
+ *
+ * 사진을 안 보내므로 입력이 훨씬 작고, 인쇄된 글자를 그대로 받으므로
+ * 읽다가 틀릴 일도 없습니다. 사람이 확인하는 절차는 그대로입니다 —
+ * 정답지가 틀리면 그 시험을 본 반 전체가 같은 오류로 채점됩니다.
+ */
+export async function readAnswerKeyText(
+  client: ModelClient,
+  text: string,
+  opts?: CallOptions,
+): Promise<ReadKey> {
+  const { data, usage } = await client.callJson<{ title: string; items: KeyItem[] }>(
+    {
+      system: ANSWER_KEY_TEXT_SYSTEM,
+      text: `아래는 정답지 PDF에서 꺼낸 글자입니다. 문항 번호와 정답을 가려 적으십시오.\n\n${text}`,
       schema: ANSWER_KEY_SCHEMA,
     },
     opts,

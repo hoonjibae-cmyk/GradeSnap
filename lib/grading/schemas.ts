@@ -130,8 +130,15 @@ export const ANSWER_KEY_SCHEMA = {
         properties: {
           no: { type: "string", description: "문항 번호" },
           expected: { type: "string", description: "그 문항의 정답. 인쇄된 그대로" },
+          /*
+            제시어는 **채점에 안 씁니다.** 제목이 어긋났을 때 "제시어가
+            겹치는가"로 정답지를 찾는 보조 경로가 이걸 봅니다(§13.45).
+            정답지에 제시어가 안 적혀 있는 경우가 흔하므로 빈 문자열이
+            정상입니다 — 없다고 지어내면 엉뚱한 답안지에 붙습니다.
+          */
+          prompt: { type: "string", description: "그 문항의 제시어(문제 쪽 낱말). 없으면 빈 문자열" },
         },
-        required: ["no", "expected"],
+        required: ["no", "expected", "prompt"],
         additionalProperties: false,
       },
     },

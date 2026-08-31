@@ -226,8 +226,8 @@ describe("사람이 등록한 정답지", () => {
     async get() {
       return null;
     },
-    async byTitle() {
-      return k;
+    async findKey() {
+      return { ref: k, how: "제목" as const, ambiguous: [] };
     },
     async save() {},
   });
@@ -291,5 +291,72 @@ describe("사람이 등록한 정답지", () => {
 
     expect(out.usedRef).toBe(false);
     expect(calls).toHaveLength(1);
+  });
+});
+
+/*
+  2026-08-31. 정답지를 구글 폴더에서 가져오기 시작하면 제목을 손으로 맞춰
+  주던 사람이 사라집니다. 그래서 제목이 조금 달라도 붙이는 보조 경로를
+  넣었는데(§13.45), **보조 경로로 붙은 것을 화면이 말하지 않으면**
+  잘못 붙은 정답지가 반 전체로 조용히 번집니다.
+
+  여기서 재는 것은 판정이 아니라 **말을 하는가**입니다.
+*/
+describe("정답지를 어떻게 찾았는지 말합니다", () => {
+  const KEY: ExamRef = {
+    fingerprint: "key:x",
+    title: "M4 워드마스터 Unit 33-34",
+    items: [{ no: "1", prompt: "", direction: "ko2en", expected: "버리다" }],
+  };
+  const store = (lookup: Awaited<ReturnType<NonNullable<RefStore["findKey"]>>>): RefStore => ({
+    async get() {
+      return null;
+    },
+    async findKey() {
+      return lookup;
+    },
+    async save() {},
+  });
+  const run = (s: RefStore) =>
+    judgeSheet(
+      fake(() => ({ results: [] })).client,
+      {
+        transcript: transcript([item("1", "버리다")], "M4 워드마스터 Unit 33-34"),
+        pages: 1,
+        strictSpelling: false,
+        useRefs: false,
+        sheetId: "s",
+      },
+      s,
+    );
+
+  /** 정답지에 대한 안내만 봅니다 — 밀림 경보는 이 describe의 관심사가 아닙니다. */
+  const notes = (out: { warnings: { level: string; text: string }[] }) =>
+    out.warnings.filter((w) => w.level === "info");
+
+  it("제목이 똑같이 붙은 것은 아무 말도 안 합니다 — 그게 정상입니다", async () => {
+    expect(notes(await run(store({ ref: KEY, how: "제목", ambiguous: [] })))).toEqual([]);
+  });
+
+  it("🔴 다른 경로로 붙었으면 그렇게 적습니다", async () => {
+    const out = await run(
+      store({ ref: KEY, how: "제목 근사", why: "제목이 「M4 워드마스터 Unit 33-34」과 비슷합니다 (82%).", ambiguous: [] }),
+    );
+    const note = out.warnings.find((w) => w.text.includes("제목 근사"));
+    expect(note?.level).toBe("info");
+    expect(note?.text).toContain("확인하십시오");
+  });
+
+  it("🔴 비슷한 후보가 여럿이라 못 골랐으면 **이름을 댑니다**", async () => {
+    const out = await run(
+      store({ ref: null, ambiguous: [{ title: "3과 A", score: 0.8 }, { title: "3과 B", score: 0.79 }] }),
+    );
+    const note = out.warnings.find((w) => w.text.includes("정하지 못했습니다"));
+    expect(note?.text).toContain("「3과 A」");
+    expect(note?.text).toContain("「3과 B」");
+  });
+
+  it("정답지가 아예 없으면 조용합니다 — 없는 것은 알릴 일이 아닙니다", async () => {
+    expect(notes(await run(store({ ref: null, ambiguous: [] })))).toEqual([]);
   });
 });
