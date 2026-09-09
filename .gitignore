@@ -7,6 +7,8 @@ samples/
 # 앱 아이콘은 학생 사진이 아니라 제품 자산입니다
 !app/*.png
 !public/*.png
+# 사용 가이드 예시 화면 — 실제 학생 정보가 없는 제품 문서 자산입니다
+!public/help/*.png
 
 # 환경 변수
 .env

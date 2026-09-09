@@ -1,353 +1,260 @@
+import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import { Crown } from "@/components/Logo";
 import { ACADEMY } from "@/lib/brand";
 
-/**
- * 사용 안내 — **조교에게 주소 하나로 보낼 수 있는 매뉴얼**입니다.
- *
- * 로그인 없이 열립니다. 처음 오는 사람은 계정도 승인도 없는 상태로 읽어야
- * 하고, 승인 대기 중에 읽을 것이 없으면 아무 데도 안 물어보고 그냥 기다립니다.
- *
- * **학생 것은 한 글자도 없습니다.** 이름도, 점수도, 사진도, 반 이름도
- * 예시조차 실제를 쓰지 않습니다. 그래서 로그인 밖에 둘 수 있는 것이고,
- * 이 원칙이 깨지는 순간 이 페이지는 관문 안으로 들어가야 합니다.
- *
- * 검색에는 안 걸리게 해뒀습니다(`robots`). 막는 게 아니라, 학원 내부 문서가
- * 검색 결과에 뜰 이유가 없어서입니다.
- */
 export const metadata: Metadata = {
-  title: "GradeSnap 사용 안내",
-  description: "목동유쌤영어학원 · 조교·직원용 사용 안내",
+  title: "자동채점 사용 가이드",
+  description: `${ACADEMY} 직원용 자동채점 사용 가이드`,
   robots: { index: false, follow: false },
 };
 
+const toc = [
+  ["scope", "사용 범위"],
+  ["account", "1. 로그인과 계정"],
+  ["intake", "2. 촬영과 접수"],
+  ["status", "3. 채점 상태"],
+  ["review", "4. 검수와 확정"],
+  ["keys", "5. 정답지 등록"],
+  ["roster", "6. 명단 확인"],
+  ["rules", "7. 보안 원칙"],
+  ["trouble", "문제 해결"],
+] as const;
+
 export default function HelpPage() {
   return (
-    <main className="mx-auto max-w-2xl p-5 pb-24">
-      <header className="border-b border-slate-200 pb-4">
-        <p className="text-xs font-semibold tracking-[0.2em] text-slate-400">{ACADEMY}학원</p>
-        <h1 className="mt-1 text-2xl font-bold">GradeSnap 사용 안내</h1>
-        <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
-          답안지를 찍으면 채점됩니다. <strong className="text-slate-900">다만 최종 판단은 사람이 합니다</strong> —
-          이 프로그램은 읽고 세는 일을 대신할 뿐이고, 통과 여부는 <b>확인한 사람이 확정합니다.</b>
-        </p>
-        {/*
-          범위를 맨 위에 답니다. 아래 어딘가에 적어두면 "찍으면 채점된다"만
-          읽고 본 시험 답안지를 올립니다. **안 쓰는 자리가 쓰는 자리보다
-          많은 도구**라, 어디에 쓰는지부터 말해야 합니다.
-        */}
-        <p className="mt-3 rounded-lg border border-slate-300 bg-white p-3 text-sm leading-relaxed text-slate-700">
-          <b>재시험 답안지만, 그것도 채점이 밀릴 때만 올립니다.</b>
-          <br />
-          재시험도 손으로 채점하는 것이 원칙입니다. 답안지가 쌓여 <b>학생을 기다리게 할 것 같을 때</b> 씁니다.
-          <br />
-          클리닉 본 시험과 인클래스 테스트 답안지는 <b>어떤 경우에도 올리지 않습니다.</b>
-        </p>
+    <main className="min-h-screen bg-[#f4f7fb] text-slate-900">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+          <Link href="/" className="inline-flex items-center gap-2.5 font-bold tracking-tight">
+            <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-blue-700 to-cyan-500 text-white shadow-lg shadow-blue-900/15">
+              <Crown className="h-5 w-auto" />
+            </span>
+            <span>
+              자동채점
+              <small className="block text-[11px] font-semibold tracking-[0.14em] text-slate-400">GRADESNAP GUIDE</small>
+            </span>
+          </Link>
+          <nav className="flex items-center gap-2" aria-label="바로가기">
+            <a href="https://portal.yussam.com" className="hidden rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300 sm:inline-flex">
+              워크스페이스
+            </a>
+            <Link href="/" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-800">
+              자동채점 열기 ↗
+            </Link>
+          </nav>
+        </div>
       </header>
 
-      <nav className="no-print mt-4 flex flex-wrap gap-2 text-sm">
-        <a href="/" className="rounded-lg border border-slate-300 px-3 py-1.5">
-          로그인
-        </a>
-        <a href="/signup" className="rounded-lg border border-slate-300 px-3 py-1.5">
-          계정 만들기
-        </a>
-      </nav>
+      <section className="mx-auto max-w-7xl px-4 pt-5 sm:px-6 sm:pt-9">
+        <div className="relative overflow-hidden rounded-[2rem] bg-[linear-gradient(125deg,#071a45_0%,#114eb8_58%,#09aaca_100%)] px-6 py-10 text-white shadow-[0_24px_70px_rgba(15,52,110,.22)] sm:px-12 sm:py-14 lg:px-16">
+          <div className="absolute -right-16 -top-24 size-72 rounded-full border-[46px] border-white/5" />
+          <div className="absolute -bottom-28 right-56 size-56 rounded-full bg-cyan-300/10" />
+          <div className="relative max-w-3xl">
+            <p className="text-sm font-bold tracking-[0.18em] text-cyan-200">YUSSAM WORKSPACE · USER GUIDE</p>
+            <h1 className="mt-4 text-4xl font-black tracking-[-0.045em] sm:text-5xl lg:text-6xl">
+              찍고, 확인하고,<br />확정하면 끝납니다.
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-blue-100 sm:text-lg">
+              재시험 답안지를 촬영해 접수하고, 자동채점 결과를 사람이 검수한 뒤 명단으로 정리하는 전체 과정을 안내합니다.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-2.5">
+              <a href="#quick" className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-blue-800 shadow-lg shadow-blue-950/15">1분 사용법 보기</a>
+              <Link href="/" className="rounded-xl border border-white/25 bg-white/10 px-5 py-2.5 text-sm font-bold text-white">바로 접수하기</Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <Section n={1} title="계정 만들기">
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>
-            <Path>/signup</Path> 을 열어 <b>이름(실명)·이메일·비밀번호</b>를 넣고 가입합니다.
-          </li>
-          <li>가입하면 원장님께 승인 신청이 올라갑니다.</li>
-          <li>승인되면 그때부터 화면이 열립니다. 「승인됐는지 확인」을 눌러 보십시오.</li>
-        </ol>
-        <Note>
-          <b>가입 = 사용 허가가 아닙니다.</b> 승인 전에는 답안지도 학생 이름도 보이지 않습니다. 하루가 지나도
-          안 열리면 원장님께 말씀하십시오 — 신청이 안 들어간 것일 수 있습니다.
-        </Note>
-        <p>이름은 실명으로 적으십시오. 원장님이 승인 화면에서 보는 것이 그 이름뿐입니다.</p>
-        <Note>
-          <b>임시 비밀번호를 받으셨으면 바로 바꾸십시오.</b> 로그인한 뒤 위 메뉴의 <b>「내 계정」</b>에서
-          바꿉니다. 임시 비밀번호는 만들 때 화면에 그대로 보였던 것이라 그대로 두면 안 됩니다.
-          <br />
-          비밀번호를 잊어 <b>로그인 자체가 안 되면</b> 「내 계정」에 못 들어갑니다 — 원장님께 말씀하시면
-          새로 발급해 드립니다.
-        </Note>
-      </Section>
+      <div className="mx-auto grid max-w-7xl gap-7 px-4 py-7 sm:px-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+        <aside className="sticky top-24 hidden self-start rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:block">
+          <p className="px-2 pb-2 text-xs font-bold tracking-[0.12em] text-slate-400">가이드 목차</p>
+          <nav className="space-y-0.5" aria-label="가이드 목차">
+            {toc.map(([id, label]) => (
+              <a key={id} href={`#${id}`} className="block rounded-lg px-2 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700">{label}</a>
+            ))}
+          </nav>
+        </aside>
 
-      <Section n={2} title="휴대폰 홈 화면에 올려두기">
-        <p>매번 주소를 치지 않게 아이콘으로 만들어 두십시오. 앱 설치가 아니라 바로가기입니다.</p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>
-            <b>아이폰(Safari)</b> — 아래 공유 단추 → <b>홈 화면에 추가</b>
-          </li>
-          <li>
-            <b>안드로이드(Chrome)</b> — 오른쪽 위 ⋮ → <b>홈 화면에 추가</b>
-          </li>
-        </ul>
-        <Note>
-          다른 브라우저로 열면 <b>로그인이 풀린 것처럼 보입니다.</b> 늘 같은 브라우저(홈 화면 아이콘)로
-          들어오십시오.
-        </Note>
-      </Section>
+        <div className="min-w-0">
+          <section id="scope" className="scroll-mt-24 overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm">
+            <div className="border-l-4 border-rose-500 p-5 sm:p-6">
+              <p className="text-xs font-black tracking-[0.14em] text-rose-600">사용 전에 먼저 확인</p>
+              <h2 className="mt-2 text-xl font-black tracking-tight sm:text-2xl">재시험 답안지만, 채점이 밀릴 때만 사용합니다.</h2>
+              <p className="mt-3 leading-7 text-slate-600">
+                재시험도 손으로 채점하는 것이 원칙입니다. 답안지가 쌓여 학생을 기다리게 할 것 같을 때 사용하세요.
+                <strong className="text-slate-950"> 클리닉 본 시험과 인클래스 테스트 답안지는 어떤 경우에도 올리지 않습니다.</strong>
+              </p>
+            </div>
+          </section>
 
-      <Section n={3} title="접수 — 재시험 답안지를 받는 자리">
-        <Note tone="warn">
-          <b>먼저 판단할 것 하나.</b> 재시험도 손으로 채점하는 것이 원칙입니다. 답안지가 쌓여{" "}
-          <b>학생을 기다리게 할 것 같을 때만</b> 프로그램을 씁니다. 애매하면 손으로 채점하십시오.
-        </Note>
-        <p>
-          쓰기로 했으면, 여러 명을 모아서 한꺼번에 돌리는 게 아닙니다. <b>학생이 내면 그 자리에서 찍고
-          접수합니다.</b>
-        </p>
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>맨 위 날짜가 오늘인지 봅니다.</li>
-          <li>
-            <b>반</b> — 적어두면 명단이 반별로 나옵니다. 안 적어도 됩니다. 한 번 쓴 반은 다음부터 단추로 나옵니다.
-          </li>
-          <li>
-            <b>학생 이름</b> — 알면 적고, 모르면 비웁니다. 비우면 시험지에서 읽습니다.
-          </li>
-          <li>
-            <b>사진</b> — 이 학생의 답안지를 전부 찍습니다(4번 항목).
-          </li>
-          <li>
-            <b>접수</b>를 누릅니다. <b>기다리지 말고 다음 학생을 받으십시오.</b> 채점은 뒤에서 돌아갑니다.
-          </li>
-        </ol>
-        <Note>
-          반과 이름은 <b>접수하면 비워집니다.</b> 일부러 그렇게 만들었습니다 — 남겨두면 다음 학생에게 앞
-          학생 이름이 조용히 붙습니다.
-        </Note>
-        <p>
-          「철자 엄격」은 <b>학원 방침이라 원장님이 정합니다.</b> 켜면 철자가 한 글자만 달라도 오답, 끄면 한두
-          글자 오타는 정답으로 봅니다. 조교가 학생마다 바꾸는 칸이 아닙니다.
-        </p>
-      </Section>
+          <section id="quick" className="mt-5 grid scroll-mt-24 grid-cols-2 gap-3 md:grid-cols-4">
+            <QuickStep n="1" title="한 명씩 촬영" body="양면이면 앞·뒤 모두" />
+            <QuickStep n="2" title="바로 접수" body="채점은 뒤에서 진행" />
+            <QuickStep n="3" title="사진과 대조" body="전사·판정 직접 검수" />
+            <QuickStep n="4" title="PASS/FAIL 확정" body="확정 결과만 명단 반영" />
+          </section>
 
-      <Section n={4} title="사진 — 여기서 대부분의 사고가 납니다">
-        <p>채점이 틀리는 가장 흔한 이유는 모델이 아니라 사진입니다.</p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>
-            <b>양면이면 앞·뒤를 모두</b> 찍습니다. 순서는 상관없습니다 — 문항 번호로 합칩니다.
-          </li>
-          <li>
-            <b>번호와 답 칸이 잘리지 않게</b> 종이 전체가 화면에 들어오게 찍습니다.
-          </li>
-          <li>
-            <b>세워서</b> 찍습니다. 가로로 누우면 「돌려 주십시오」 경고가 뜹니다. ↺ ↻ 로 돌린 뒤 접수하십시오.
-          </li>
-          <li>그림자와 손가락을 피하고, 종이를 펴서 찍습니다.</li>
-        </ul>
-        <Note tone="warn">
-          <b>한 학생의 답안지만</b> 한 번에 접수하십시오. 다른 학생 것이 섞여 들어가면 그 학생 결과가 됩니다.
-        </Note>
-        <Note>
-          <b>잘못 접수했으면 「중단」을 누르십시오.</b> 뒷장을 안 찍었거나 실수로 눌렀을 때입니다. 목록에서
-          그 줄의 「중단」을 누르면 채점이 멈춥니다.
-          <br />
-          <b>빠를수록 좋습니다</b> — 「대기」 상태면 비용이 한 푼도 안 들고, 「채점 중」이면 결과는 버리지만
-          그때까지 쓴 비용은 나갑니다. 멈춘 뒤에는 지우고 앞·뒤를 모두 찍어 다시 접수하십시오.
-        </Note>
-      </Section>
+          <GuideSection id="account" n="01" title="로그인하고 계정 승인을 받습니다" lead="처음 한 번만 계정을 만들고 관리자의 승인을 받으면 됩니다.">
+            <ol className="space-y-3">
+              <Step n="1"><Link href="/signup" className="font-bold text-blue-700 underline">계정 만들기</Link>에서 이름(실명)·이메일·비밀번호를 입력합니다.</Step>
+              <Step n="2">가입하면 관리자에게 승인 신청이 전달됩니다. 가입만으로는 답안지 화면이 열리지 않습니다.</Step>
+              <Step n="3">승인 후 로그인합니다. 승인 대기 화면이라면 <b>승인됐는지 확인</b>을 눌러 보세요.</Step>
+            </ol>
+            <Callout>임시 비밀번호를 받았다면 로그인 후 <b>내 계정</b>에서 바로 바꾸세요. 로그인할 수 없으면 관리자에게 재발급을 요청합니다.</Callout>
+            <Screenshot src="/help/01-login.png" alt="자동채점 로그인 화면" caption="로그인 화면은 사용 안내를 계정 없이도 열 수 있게 구성되어 있습니다." />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <MiniCard title="아이폰 Safari">공유 버튼 → 홈 화면에 추가</MiniCard>
+              <MiniCard title="안드로이드 Chrome">오른쪽 위 ⋮ → 홈 화면에 추가</MiniCard>
+            </div>
+            <p className="mt-3 text-sm text-slate-500">늘 같은 브라우저나 홈 화면 아이콘으로 열어야 로그인 상태가 이어집니다.</p>
+          </GuideSection>
 
-      <Section n={5} title="목록에 뜨는 표시">
-        <Rows
-          rows={[
-            ["대기 · 채점 중", "돌아가는 중입니다. 그냥 두십시오."],
-            ["채점됨", "끝났습니다. 눌러서 검수합니다."],
-            ["확정", "검수가 끝났습니다. 이것만 명단에 나갑니다."],
-            ["실패", "채점이 안 됐습니다. 「다시」를 누르십시오. 두 번 실패하면 원장님께."],
-            ["중단됨", "사람이 멈춘 것입니다. 결과가 없습니다 — 지우고 다시 접수하십시오."],
-            ["PASS / FAIL", "커트라인과 오답 수로 낸 판정입니다."],
-            ["🔶 커트라인", "한두 문항으로 결과가 갈립니다. 반드시 사람이 확인하십시오."],
-            ["⚠️ 밀림", "번호와 답이 어긋나 보입니다. 전사를 종이와 대조하십시오."],
-            ["📄 일부만 찍힘", "빠진 장이 있습니다. 나머지를 찍어 다시 접수하십시오."],
-            ["커트라인 못 읽음", "빨간펜에 가렸을 때입니다. 숫자만 넣으면 다시 채점하지 않고 셉니다."],
-            ["직접 채점할 문항 N개", "프로그램이 정답을 알 수 없는 문항입니다. 검수 화면에서 사람이 ○/✗를 누릅니다."],
-          ]}
-        />
-      </Section>
+          <GuideSection id="intake" n="02" title="한 학생의 답안지를 촬영해 접수합니다" lead="여러 명을 모아 한꺼번에 올리지 않고, 학생이 제출하는 즉시 한 명씩 처리합니다.">
+            <Screenshot src="/help/02-intake.png" alt="반과 학생 이름, 답안지 사진을 확인하고 접수하는 화면" caption="실제 접수 화면과 같은 구성입니다. 화면 속 이름과 반은 설명용 가상 정보입니다." />
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <CheckItem title="반">입력하면 반별 명단에 반영됩니다. 접수 후 비워지며, 최근 반 버튼으로 다시 선택할 수 있습니다.</CheckItem>
+              <CheckItem title="학생 이름">알면 입력하고 모르면 비워 둡니다. 비워 두면 시험지 머리말에서 읽습니다.</CheckItem>
+              <CheckItem title="답안지 사진">양면이면 앞·뒤를 모두 올립니다. 순서는 상관없이 문항 번호로 합칩니다.</CheckItem>
+              <CheckItem title="철자 엄격">학원 방침에 따라 정한 설정입니다. 학생마다 임의로 바꾸지 않습니다.</CheckItem>
+            </div>
+            <Callout tone="warn">한 번에 한 학생의 답안지만 올리세요. 종이 전체와 문항 번호가 보이도록 세워서 찍고, 그림자·손가락·잘린 모서리가 없는지 확인합니다.</Callout>
+            <ol className="mt-5 space-y-3">
+              <Step n="1">상단 날짜가 오늘인지 확인하고 반과 학생 이름을 입력합니다.</Step>
+              <Step n="2">답안지 전체를 촬영합니다. 가로로 누운 사진은 ↺ ↻ 버튼으로 바로 세웁니다.</Step>
+              <Step n="3"><b>접수하고 채점 시작</b>을 누릅니다. 채점 결과를 기다리지 말고 다음 학생을 받습니다.</Step>
+            </ol>
+          </GuideSection>
 
-      <Section n={6} title="검수 — 사람이 하는 부분">
-        <p>「채점됨」 줄을 누르면 검수 화면이 열립니다.</p>
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>
-            위쪽 <b>사진을 눌러 크게 보고</b>, 표의 「학생이 쓴 것」이 종이와 같은지 봅니다.
-          </li>
-          <li>
-            다르면 ○ / ✗ 를 눌러 고칩니다. <b>고친 것은 파란색으로 남습니다.</b>
-          </li>
-          <li>이름이 잘못 읽혔으면 제목 옆에서 고칩니다. 다시 채점하지 않습니다.</li>
-          <li>
-            다 봤으면 <b>PASS / FAIL로 확정</b>합니다. <b>확정한 것만 명단에 나갑니다.</b> 잘못 눌렀으면
-            「확정 취소」로 되돌립니다.
-          </li>
-        </ol>
-        <Note tone="warn">
-          가장 조심할 것: <b>오타를 실재하는 단어로 고쳐 읽는 경우</b>가 있습니다. 학생이 틀리게 쓴 것을
-          맞게 옮겨 적어버리는 것이라 확신도로는 안 걸러집니다. 그래서 사진을 봅니다.
-        </Note>
-        <Note tone="warn">
-          <b>순서배열·문장삽입 같은 문항은 프로그램이 정답을 모릅니다.</b> 정답이 지문에 달려 있는데
-          프로그램은 답란만 보기 때문입니다. 그런 문항은 <b>「정답 모름 — 직접 채점」</b>으로 표시되고
-          오답으로 세지 않습니다. <b>사람이 ○ / ✗ 를 눌러야 합니다.</b>
-          <br />
-          다 누르기 전까지는 그 문항이 결과를 뒤집을 수 있어 <b>PASS/FAIL이 안 나올 수 있습니다.</b>
-        </Note>
-        <Note>
-          <b>확정은 조교도 합니다.</b> 대신 누가 확정했는지 기록에 남습니다. 애매하면 확정하지 말고
-          선생님께 물어보십시오 — 안 누르면 그 학생은 명단 어디에도 안 나가고, 화면에 「확정 안 됨」으로
-          남습니다.
-        </Note>
-      </Section>
+          <GuideSection id="status" n="03" title="채점 상태를 확인하고 필요한 조치를 합니다" lead="접수 목록에서 진행 상태와 사람이 확인해야 할 답안지를 구분합니다.">
+            <Screenshot src="/help/03-status.png" alt="대기, 채점 중, 채점됨, 확정 상태가 표시된 접수 목록" caption="‘채점됨’ 줄 전체를 누르면 검수 화면으로 이동합니다." />
+            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <StatusRow badge="대기 · 채점 중" tone="blue">자동채점이 진행 중입니다. 그대로 두고 다음 학생을 받습니다.</StatusRow>
+              <StatusRow badge="채점됨" tone="amber">채점이 끝났습니다. 해당 줄을 눌러 사람이 검수합니다.</StatusRow>
+              <StatusRow badge="확정" tone="green">검수와 최종 판단이 끝났습니다. 이 결과만 명단에 반영됩니다.</StatusRow>
+              <StatusRow badge="실패" tone="red">다시를 누릅니다. 반복되면 사진을 새로 찍어 다시 접수합니다.</StatusRow>
+              <StatusRow badge="중단됨" tone="slate">결과가 없습니다. 빠진 장을 포함해 다시 접수합니다.</StatusRow>
+            </div>
+            <Callout tone="warn">뒷장을 빠뜨렸거나 다른 학생 사진을 올렸다면 즉시 <b>중단</b>하세요. 대기 상태에서는 비용이 들지 않지만, 채점이 시작된 뒤에는 그때까지 사용된 비용이 남습니다.</Callout>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <MiniCard title="🔶 커트라인">한두 문항으로 결과가 달라질 수 있어 반드시 직접 확인합니다.</MiniCard>
+              <MiniCard title="⚠️ 밀림">번호와 답이 어긋날 수 있으므로 사진과 전사를 대조합니다.</MiniCard>
+              <MiniCard title="📄 일부만 찍힘">빠진 장이 있습니다. 중단한 뒤 모든 면을 다시 접수합니다.</MiniCard>
+              <MiniCard title="직접 채점할 문항">정답을 알 수 없는 문항입니다. 검수 화면에서 사람이 ○ 또는 ✗를 선택합니다.</MiniCard>
+            </div>
+          </GuideSection>
 
-      <Section n={7} title="정답지 — 순서배열·문장삽입이 있는 시험">
-        <p>
-          <b>순서배열이나 문장 삽입 문항은 프로그램이 정답을 모릅니다.</b> 정답이 지문에 달려 있는데
-          프로그램은 답란만 보기 때문입니다.
-        </p>
-        <p>
-          선생님이 만들어 두신 <b>정답지를 한 번 등록하면</b> 그때부터 그 시험은 채점됩니다. 위 메뉴의{" "}
-          <b>「정답지」</b>로 들어가면 길이 두 가지입니다.
-        </p>
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li>
-            <b>구글 폴더에서 가져오기</b> — 선생님들이 이미 올려 두신 <b>「답지」 파일</b>이 목록으로 뜹니다.
-            찾아서 <b>「읽기」</b>를 누르면 번호·정답이 표에 채워집니다. <b>이쪽이 먼저입니다</b> — 인쇄된
-            글자를 그대로 가져오므로 사진보다 정확하고 빠릅니다. <b>이미 등록한 파일은 목록에서
-            빠집니다</b> — 누가 했든 마찬가지라, 조교 여럿이 나눠 해도 겹치지 않습니다.
-          </li>
-          <li>
-            <b>사진 올리기</b> — 구글 폴더에 없는 시험, 급하게 만든 재시험지는 이쪽입니다. 종이를 찍어
-            올리면 됩니다.
-          </li>
-        </ul>
-        <Note tone="warn">
-          <b>어느 길로 오든 등록 전에 표를 꼭 확인하십시오.</b> 정답지가 틀리면 <b>그 시험을 본 학생 전부가</b>{" "}
-          똑같이 틀리게 채점됩니다. 잘못 읽힌 칸은 그 자리에서 고칠 수 있습니다. <b>「읽기」를 눌렀다고
-          저장되지는 않습니다</b> — 아래 「등록」까지 눌러야 합니다.
-        </Note>
-        <Note>
-          <b>시험 제목으로 맞춥니다.</b> 답안지에 인쇄된 제목과 같은 것이 가장 좋습니다. 조금 달라도 붙지만,
-          그때는 채점 결과 화면에 <b>「정답지를 제목 근사로 붙였습니다」</b>라고 적힙니다 — 그런 글이 보이면{" "}
-          <b>다른 시험의 정답지가 아닌지 한 번 보십시오.</b>
-        </Note>
-        <Note>
-          비슷한 정답지가 둘 이상이면 프로그램이 <b>아무것도 안 씁니다.</b> 엉뚱한 정답으로 반 전체를 채점하는
-          것보다 낫기 때문입니다. 그럴 때는 결과 화면이 어느 정답지들 때문인지 이름을 대 주니,{" "}
-          <b>제목을 답안지와 같게 고쳐 다시 등록</b>하면 됩니다.
-        </Note>
-        <Note tone="warn">
-          <b>선생님이 정답지를 고쳐 다시 올리면</b> 그 파일이 목록 맨 위로 <b>다시 올라옵니다.</b>
-          「등록해 뒀는데 그 뒤에 파일이 고쳐졌습니다」라고 적혀 있으면 <b>다시 읽어서 등록</b>하십시오 —
-          안 그러면 그 반이 옛 정답으로 채점됩니다.
-        </Note>
-        <Note>
-          올린 지 <b>30일이 지나면 자동으로 지워집니다.</b> 계속 쓰시려면 다시 등록하면 됩니다.
-        </Note>
-      </Section>
+          <GuideSection id="review" n="04" title="원본 사진과 자동채점 결과를 대조합니다" lead="자동채점은 초안입니다. 최종 PASS/FAIL은 확인한 사람이 확정합니다.">
+            <Screenshot src="/help/04-review.png" alt="원본 답안지와 전사 결과를 나란히 확인하는 검수 화면" caption="실제 검수 화면과 같은 구성입니다. 답안 내용은 설명용 가상 정보입니다." />
+            <ol className="mt-6 space-y-3">
+              <Step n="1">원본 사진을 눌러 크게 보고, <b>학생이 쓴 것</b>이 종이와 같은지 문항별로 확인합니다.</Step>
+              <Step n="2">판정이 다르면 ○ 또는 ✗로 고칩니다. 사람이 바꾼 결과는 기록에 남습니다.</Step>
+              <Step n="3">학생 이름이나 반이 잘못 읽혔다면 <b>이름·반 고치기</b>로 수정합니다. 다시 채점할 필요는 없습니다.</Step>
+              <Step n="4">직접 채점할 문항을 모두 처리한 뒤 <b>PASS로 확정</b> 또는 <b>FAIL로 확정</b>을 누릅니다.</Step>
+            </ol>
+            <Callout tone="warn">학생의 오타를 실제 단어로 고쳐 읽는 경우는 확신도가 높게 표시될 수도 있습니다. 커트라인 근처 답안지는 특히 원본 사진을 직접 확인하세요.</Callout>
+            <Callout>순서배열·문장삽입처럼 답이 지문에 달린 문항은 <b>정답 모름 — 직접 채점</b>으로 표시됩니다. 사람이 판정하기 전까지 PASS/FAIL이 나오지 않을 수 있습니다.</Callout>
+          </GuideSection>
 
-      <Section n={8} title="명단">
-        <p>
-          <Path>/roster</Path> 에서 그날 <b>재시험 명단</b>과 학생별 오답을 봅니다. 복사해서 메신저에 붙이거나
-          인쇄할 수 있습니다.
-        </p>
-        <Note>
-          <b>확정된 것만 나옵니다.</b> 명단에 사람이 비면 검수가 안 끝난 것입니다 — 화면 위쪽에 몇 장이
-          남았는지 나옵니다.
-        </Note>
-      </Section>
+          <GuideSection id="keys" n="05" title="필요한 시험은 정답지를 먼저 등록합니다" lead="순서배열·문장삽입 문항을 자동으로 판정하려면 해당 시험의 정답지가 필요합니다.">
+            <Screenshot src="/help/05-keys.png" alt="구글 폴더에서 정답지 파일을 읽고 등록하는 화면" caption="구글 폴더의 답지를 읽은 뒤 번호와 정답을 확인하고 등록합니다." />
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <MiniCard title="구글 폴더에서 가져오기">‘답지’가 포함된 파일을 찾아 읽습니다. 인쇄된 글자를 직접 읽으므로 우선 사용하는 방법입니다.</MiniCard>
+              <MiniCard title="사진으로 올리기">구글 폴더에 없는 급한 재시험 정답지는 사진으로 읽을 수 있습니다.</MiniCard>
+            </div>
+            <ol className="mt-5 space-y-3">
+              <Step n="1">정답지 메뉴에서 파일을 찾아 <b>읽기</b>를 누릅니다.</Step>
+              <Step n="2">시험 제목과 모든 번호·정답을 확인하고 잘못 읽힌 칸을 고칩니다.</Step>
+              <Step n="3"><b>정답지 등록</b>을 눌러 저장합니다. 읽기만 눌러서는 등록되지 않습니다.</Step>
+            </ol>
+            <Callout tone="warn">정답지가 틀리면 같은 시험을 본 학생 모두가 잘못 채점됩니다. 제목이 비슷한 다른 시험의 답지가 아닌지 반드시 확인하세요.</Callout>
+            <p className="mt-4 text-sm leading-6 text-slate-600">등록 후 원본 파일이 수정되면 목록에 다시 나타납니다. 다시 읽어서 등록해야 최신 정답이 반영됩니다. 등록된 정답지는 30일 후 자동으로 지워지므로 계속 사용할 때는 다시 등록합니다.</p>
+          </GuideSection>
 
-      <Section n={9} title="지켜야 할 것">
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li>
-            <b>학원 업무용입니다.</b> 학생 답안지 채점 외의 용도로 쓸 수 없습니다.
-          </li>
-          <li>
-            <b>답안지 사진을 다른 앱으로 보내지 마십시오.</b> 카카오톡·사진첩·개인 클라우드 전부
-            해당합니다. 찍은 사진은 접수 화면에서 바로 올라갑니다.
-          </li>
-          <li>
-            <b>종이 원본은 학원에 둡니다.</b> 집에 가져가지 마십시오.
-          </li>
-          <li>
-            <b>계정을 남에게 빌려주지 마십시오.</b> 기록이 전부 계정별로 남습니다.
-          </li>
-          <li>
-            <b>모든 사용은 로그로 기록·관리됩니다.</b> 누가 언제 몇 장을 돌렸고 비용이 얼마인지 관리자가
-            봅니다. 숨기려는 게 아니라 미리 알리는 것입니다.
-          </li>
-        </ul>
-        <p className="text-sm text-slate-500">
-          답안지 사진은 90일이 지나면 자동으로 지워집니다. 학부모가 삭제를 요청하면 원장님이 그 학생 기록을
-          통째로 지웁니다.
-        </p>
-      </Section>
+          <GuideSection id="roster" n="06" title="확정된 결과를 명단에서 확인합니다" lead="명단에는 사람이 검수해 확정한 결과만 표시됩니다.">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MiniCard title="재시험 대상">확정된 FAIL 학생과 오답 문항을 확인합니다.</MiniCard>
+              <MiniCard title="통과">확정된 PASS 학생을 확인합니다.</MiniCard>
+              <MiniCard title="복사·인쇄">정리된 명단을 복사해 메신저에 붙이거나 인쇄합니다.</MiniCard>
+            </div>
+            <Callout>명단에 학생이 보이지 않으면 접수 목록에서 <b>채점됨</b> 상태로 남아 있는지 확인하세요. 검수 후 확정해야 명단에 들어갑니다.</Callout>
+          </GuideSection>
 
-      <Section n={10} title="안 될 때">
-        <Rows
-          rows={[
-            ["로그인이 안 됨", "이메일·비밀번호를 다시 확인하십시오. 비밀번호를 잊었으면 원장님께 재발급을 요청하십시오."],
-            ["비밀번호를 바꾸고 싶음", "로그인한 뒤 위 메뉴의 「내 계정」에서 바꿉니다."],
-            ["이름·이메일을 바꾸고 싶음", "본인이 못 바꿉니다. 원장님께 말씀하십시오."],
-            ["로그인은 되는데 화면이 안 열림", "아직 승인 전입니다. 「승인됐는지 확인」을 눌러 보십시오."],
-            ["갑자기 대기 화면으로 바뀜", "계정이 꺼진 것입니다. 원장님께 문의하십시오."],
-            ["채점이 「실패」로 끝남", "「다시」를 누르십시오. 반복되면 사진을 다시 찍어 접수합니다."],
-            ["채점이 오래 걸림", "한 장에 1~2분입니다. 밀리면 순서대로 나옵니다 — 기다리지 말고 계속 받으십시오."],
-            ["사진이 안 올라감", "인터넷을 확인하십시오. 접수 전이면 다시 찍으면 됩니다."],
-            ["뒷장을 안 찍고 접수함", "그 줄의 「중단」을 누르십시오. 빠를수록 비용이 덜 나갑니다."],
-          ]}
-        />
-      </Section>
+          <GuideSection id="rules" n="07" title="답안지와 계정을 안전하게 다룹니다" lead="학생 답안지에는 이름과 필체 등 개인정보가 포함됩니다.">
+            <ul className="grid gap-3 sm:grid-cols-2">
+              <Rule>학원 업무와 학생 답안지 채점에만 사용합니다.</Rule>
+              <Rule>답안지 사진을 카카오톡·사진첩·개인 클라우드로 보내지 않습니다.</Rule>
+              <Rule>종이 원본은 학원에 두고 외부로 가져가지 않습니다.</Rule>
+              <Rule>계정을 다른 사람에게 빌려주지 않습니다.</Rule>
+              <Rule>모든 사용은 시각·건수·비용과 함께 계정별로 기록됩니다.</Rule>
+              <Rule>답안지 사진은 90일 후 자동 삭제되며, 삭제 요청은 관리자에게 전달합니다.</Rule>
+            </ul>
+          </GuideSection>
 
-      <footer className="mt-10 border-t border-slate-200 pt-4 text-sm text-slate-500">
-        여기에 없는 것은 원장님께 물어보십시오. 혼자 짐작해서 넘기면 그 학생 결과가 틀린 채로 나갑니다.
-      </footer>
+          <GuideSection id="trouble" n="?" title="문제가 생겼을 때" lead="아래 순서로 확인해도 해결되지 않으면 관리자에게 알려 주세요.">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <Trouble q="로그인이 안 됩니다">이메일과 비밀번호를 다시 확인합니다. 비밀번호를 잊었다면 관리자에게 재발급을 요청합니다.</Trouble>
+              <Trouble q="화면이 열리지 않습니다">아직 승인 전이거나 계정 사용이 중지된 상태입니다. 승인됐는지 확인을 누른 뒤 관리자에게 문의합니다.</Trouble>
+              <Trouble q="채점이 실패했습니다">다시를 누릅니다. 반복되면 종이 전체가 선명하게 보이도록 사진을 새로 찍어 접수합니다.</Trouble>
+              <Trouble q="채점이 오래 걸립니다">대기열이 있으면 순서대로 처리됩니다. 기다리는 동안 다음 학생의 답안지를 계속 접수할 수 있습니다.</Trouble>
+              <Trouble q="뒷장을 빼먹었습니다">접수 목록에서 즉시 중단하고, 해당 답안지를 지운 뒤 앞·뒤를 모두 다시 접수합니다.</Trouble>
+              <Trouble q="커트라인을 못 읽었습니다">결과 줄이나 검수 화면에서 커트라인 숫자를 직접 입력해 반영합니다. 전체 채점을 다시 돌릴 필요는 없습니다.</Trouble>
+            </div>
+          </GuideSection>
+
+          <section className="mt-6 rounded-[1.75rem] bg-[linear-gradient(125deg,#0b1d46,#165ac2)] p-8 text-center text-white shadow-lg sm:p-10">
+            <h2 className="text-2xl font-black tracking-tight">재시험 답안지를 접수해 보세요.</h2>
+            <p className="mt-2 text-blue-100">촬영 후 접수하고, 자동채점 결과를 반드시 검수해 확정합니다.</p>
+            <Link href="/" className="mt-5 inline-flex rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-blue-800">자동채점 열기 ↗</Link>
+          </section>
+
+          <footer className="py-9 text-center text-xs text-slate-400">{ACADEMY} · YUSSAM WORKSPACE · 자동채점 사용 가이드</footer>
+        </div>
+      </div>
     </main>
   );
 }
 
-// ---------------------------------------------------------------------------
-// 조각들
-// ---------------------------------------------------------------------------
-
-function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <section className="print-block mt-8">
-      <h2 className="text-lg font-bold">
-        <span className="mr-1.5 text-slate-400">{n}</span>
-        {title}
-      </h2>
-      <div className="mt-2 space-y-2.5 text-[15px] leading-relaxed text-slate-700">{children}</div>
-    </section>
-  );
+function QuickStep({ n, title, body }: { n: string; title: string; body: string }) {
+  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><span className="grid size-8 place-items-center rounded-lg bg-blue-600 text-sm font-black text-white">{n}</span><strong className="mt-3 block text-sm sm:text-base">{title}</strong><span className="mt-1 block text-sm leading-5 text-slate-500">{body}</span></div>;
 }
 
-/** 화면 주소. 조교가 그대로 쳐볼 수 있게 글꼴을 바꿔둡니다. */
-function Path({ children }: { children: React.ReactNode }) {
-  return <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[13px] text-slate-800">{children}</code>;
+function GuideSection({ id, n, title, lead, children }: { id: string; n: string; title: string; lead: string; children: ReactNode }) {
+  return <section id={id} className="mt-5 scroll-mt-24 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-8"><header className="flex items-start gap-3 sm:gap-4"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-sm font-black text-blue-700">{n}</span><div><h2 className="text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-3xl">{title}</h2><p className="mt-1.5 leading-6 text-slate-500">{lead}</p></div></header><div className="mt-6 text-[15px] leading-7 text-slate-700 sm:text-base">{children}</div></section>;
 }
 
-function Note({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "warn" }) {
-  const style =
-    tone === "warn" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-100 text-slate-700";
-  return <p className={`rounded-lg border p-3 text-sm leading-relaxed ${style}`}>{children}</p>;
+function Step({ n, children }: { n: string; children: ReactNode }) {
+  return <li className="flex gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-lg bg-blue-50 text-xs font-black text-blue-700">{n}</span><span>{children}</span></li>;
 }
 
-/**
- * 표시 → 뜻. 표 대신 두 칸짜리 줄입니다 —
- * **휴대폰에서 표는 옆으로 밀립니다.**
- */
-function Rows({ rows }: { rows: [string, string][] }) {
-  return (
-    <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {rows.map(([k, v]) => (
-        <li key={k} className="p-3 sm:flex sm:gap-4">
-          <span className="block font-medium text-slate-900 sm:w-44 sm:shrink-0">{k}</span>
-          <span className="mt-0.5 block text-sm text-slate-600 sm:mt-0">{v}</span>
-        </li>
-      ))}
-    </ul>
-  );
+function Screenshot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
+  return <figure className="mt-6"><div className="overflow-hidden rounded-2xl border border-slate-300 bg-slate-100 shadow-[0_16px_45px_rgba(15,35,72,.12)]"><Image src={src} alt={alt} width={1264} height={708} sizes="(max-width: 1024px) 100vw, 900px" className="h-auto w-full" /></div><figcaption className="mt-2.5 text-center text-xs leading-5 text-slate-500">{caption}</figcaption></figure>;
+}
+
+function Callout({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warn" }) {
+  return <div className={`mt-5 rounded-r-xl border-l-4 p-4 text-sm leading-6 ${tone === "warn" ? "border-amber-500 bg-amber-50 text-amber-950" : "border-blue-600 bg-blue-50 text-blue-950"}`}>{children}</div>;
+}
+
+function MiniCard({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><strong className="block text-sm text-slate-950">{title}</strong><p className="mt-1 text-sm leading-6 text-slate-600">{children}</p></div>;
+}
+
+function CheckItem({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="rounded-xl border border-slate-200 p-4"><strong className="flex items-center gap-2 text-sm text-slate-950"><span className="grid size-5 place-items-center rounded-full bg-emerald-100 text-xs text-emerald-700">✓</span>{title}</strong><p className="mt-2 text-sm leading-6 text-slate-600">{children}</p></div>;
+}
+
+const tones = { blue: "bg-blue-100 text-blue-700", amber: "bg-amber-100 text-amber-800", green: "bg-emerald-100 text-emerald-700", red: "bg-rose-100 text-rose-700", slate: "bg-slate-200 text-slate-700" };
+
+function StatusRow({ badge, tone, children }: { badge: string; tone: keyof typeof tones; children: ReactNode }) {
+  return <div className="grid gap-2 border-b border-slate-100 p-4 last:border-0 sm:grid-cols-[150px_1fr] sm:items-center"><span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${tones[tone]}`}>{badge}</span><p className="text-sm leading-6 text-slate-600">{children}</p></div>;
+}
+
+function Rule({ children }: { children: ReactNode }) {
+  return <li className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6"><span className="font-black text-blue-600">✓</span><span>{children}</span></li>;
+}
+
+function Trouble({ q, children }: { q: string; children: ReactNode }) {
+  return <div className="grid gap-1 border-b border-slate-100 p-4 last:border-0 sm:grid-cols-[210px_1fr] sm:gap-5"><strong className="text-sm text-slate-950">{q}</strong><p className="text-sm leading-6 text-slate-600">{children}</p></div>;
 }
