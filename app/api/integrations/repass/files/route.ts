@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { driveConfig } from "@/lib/drive/auth";
-import { downloadFile, listRetestPdfs } from "@/lib/drive/client";
+import { downloadFile, listRetestFiles } from "@/lib/drive/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   try {
     const fileId = new URL(req.url).searchParams.get("fileId");
     if (!fileId) {
-      const listing = await listRetestPdfs(config);
+      const listing = await listRetestFiles(config);
       return NextResponse.json(listing, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (!/^[\w-]{10,200}$/.test(fileId)) return NextResponse.json({ error: "파일 ID가 올바르지 않습니다." }, { status: 400 });
@@ -29,6 +29,7 @@ export async function GET(req: Request) {
     return new Response(Uint8Array.from(bytes).buffer, { headers: { "Content-Type": "application/pdf", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
   } catch (error) {
     console.error("[repass/files]", error instanceof Error ? error.message : String(error));
-    return NextResponse.json({ error: "Google Drive PDF를 가져오지 못했습니다." }, { status: 502 });
+    return NextResponse.json({ error: "Google Drive 파일을 가져오지 못했습니다." }, { status: 502 });
   }
 }
+

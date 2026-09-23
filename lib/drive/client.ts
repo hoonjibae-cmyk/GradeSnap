@@ -24,12 +24,12 @@ const API = "https://www.googleapis.com/drive/v3/files";
 /** GradeSnap 채점 화면은 최근 정답지에 집중합니다. */
 const MAX_DEPTH = 4;
 const MAX_FOLDERS = 200;
-/** RePass는 선생님별 전체 PDF 목록을 가져오므로 보관 폴더까지 탐색합니다. */
+/** RePass는 선생님별 파일 목록을 가져오므로 보관 폴더까지 탐색합니다. */
 const MAX_RETEST_DEPTH = 10;
 const MAX_RETEST_FOLDERS = 2500;
 /** 화면에 내놓을 정답지 수. 최근 것부터입니다. */
 export const MAX_FILES = 200;
-export const MAX_RETEST_PDFS = 30000;
+export const MAX_RETEST_FILES = 30000;
 
 export interface DriveFile {
   id: string;
@@ -52,6 +52,23 @@ interface RawFile {
 }
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
+const DOCUMENT_EXT = /\.(?:hwp|hwpx|doc|docx|docm|odt|rtf)$/iu;
+const DOCUMENT_MIMES = new Set([
+  "application/vnd.google-apps.document",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-word.document.macroenabled.12",
+  "application/vnd.oasis.opendocument.text",
+  "application/rtf",
+  "text/rtf",
+  "application/x-hwp",
+  "application/haansofthwp",
+  "application/vnd.hancom.hwp",
+  "application/hwp+zip",
+]);
+const isRetestFile = (file: RawFile) =>
+  (file.mimeType === PDF || /\.pdf$/iu.test(file.name) || DOCUMENT_EXT.test(file.name) || DOCUMENT_MIMES.has(file.mimeType)) &&
+  !/오답\s*노트/u.test(file.name);
 
 async function api(cfg: DriveConfig, path: string): Promise<Response> {
   const token = await accessToken(cfg);
@@ -73,8 +90,9 @@ async function childrenOf(cfg: DriveConfig, folderId: string, modifiedAfter?: st
   let pageToken = "";
   do {
     const q = new URLSearchParams({
-      // Keep traversing old folders: a teacher may upload a new PDF inside one.
-      q: `'${folderId}' in parents and trashed = false${modifiedAfter ? ` and (mimeType = '${FOLDER_MIME}' or (mimeType = '${PDF}' and modifiedTime > '${modifiedAfter}'))` : ""}`,
+      // Keep traversing old folders; accept recently changed files of any type
+      // because HWP/HWPX uploads can have inconsistent MIME types.
+      q: `'${folderId}' in parents and trashed = false${modifiedAfter ? ` and (mimeType = '${FOLDER_MIME}' or modifiedTime > '${modifiedAfter}')` : ""}`,
       fields: "nextPageToken, files(id, name, mimeType, modifiedTime, size)",
       pageSize: "1000",
       // 공유 드라이브에 있을 수도 있습니다. 없으면 무시되는 값입니다.
@@ -140,7 +158,7 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
             mimeType: f.mimeType,
             folder: folder.name,
             modifiedTime: f.modifiedTime,
-            readable: f.mimeType === PDF,
+            readable: f.mimeType === PDF || /\.pdf$/iu.test(f.name),
             size: Number(f.size) || 0,
           });
         }
@@ -157,7 +175,7 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
   return (await listFiles(cfg, (file) => isAnswerKeyName(file.name), MAX_FILES)).files;
 }
 
-/** RePass만 사용하는 읽기 전용 PDF 목록. 정답지와 문제지를 함께 돌려줍니다. */
+/** RePass만 사용하는 읽기 전용 파일 목록. PDF와 문서의 메타데이터만 돌려줍니다. */
 export function retestCutoff(now = new Date()): string {
   const cutoff = new Date(now);
   const date = cutoff.getUTCDate();
@@ -168,9 +186,9 @@ export function retestCutoff(now = new Date()): string {
   return cutoff.toISOString();
 }
 
-export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number; since: string }> {
+export async function listRetestFiles(cfg?: DriveConfig | null): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number; since: string }> {
   const since = retestCutoff();
-  return { ...await listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS, MAX_RETEST_FOLDERS, MAX_RETEST_DEPTH, since), since };
+  return { ...await listFiles(cfg, isRetestFile, MAX_RETEST_FILES, MAX_RETEST_FOLDERS, MAX_RETEST_DEPTH, since), since };
 }
 
 /** 파일 하나를 통째로 내려받습니다. */
