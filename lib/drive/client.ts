@@ -22,11 +22,12 @@ import { isAnswerKeyName, PDF } from "./names";
 const API = "https://www.googleapis.com/drive/v3/files";
 
 /** 몇 겹까지 들어갈 것인가. 지금 구조는 2겹이라 넉넉합니다. */
-const MAX_DEPTH = 4;
+const MAX_DEPTH = 6;
 /** 훑을 폴더 수의 뚜껑. 선생님 수의 몇 배입니다. */
-const MAX_FOLDERS = 200;
+const MAX_FOLDERS = 500;
 /** 화면에 내놓을 정답지 수. 최근 것부터입니다. */
 export const MAX_FILES = 200;
+export const MAX_RETEST_PDFS = 10000;
 
 export interface DriveFile {
   id: string;
@@ -116,28 +117,30 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
       폴더끼리는 서로 기다릴 이유가 없습니다. 한 층을 통째로 보내면
       **가장 느린 폴더 하나만큼**만 걸립니다.
     */
-    const kidsPerFolder = await Promise.all(batch.map((f) => childrenOf(c, f.id)));
-
     const next: { id: string; name: string }[] = [];
-    batch.forEach((folder, i) => {
-      for (const f of kidsPerFolder[i]) {
-        if (f.mimeType === FOLDER_MIME) {
-          // 하위 폴더 이름이 곧 선생님 이름입니다 — 그걸 물려줍니다.
-          next.push({ id: f.id, name: folder.name || f.name });
-          continue;
+    for (let start = 0; start < batch.length; start += 20) {
+      const part = batch.slice(start, start + 20);
+      const kidsPerFolder = await Promise.all(part.map((f) => childrenOf(c, f.id)));
+      part.forEach((folder, i) => {
+        for (const f of kidsPerFolder[i]) {
+          if (f.mimeType === FOLDER_MIME) {
+            // Keep every ancestor: a campus folder may sit above the teacher folder.
+            next.push({ id: f.id, name: [folder.name, f.name].filter(Boolean).join("/") });
+            continue;
+          }
+          if (!accept(f)) continue;
+          found.push({
+            id: f.id,
+            name: f.name,
+            mimeType: f.mimeType,
+            folder: folder.name,
+            modifiedTime: f.modifiedTime,
+            readable: f.mimeType === PDF,
+            size: Number(f.size) || 0,
+          });
         }
-        if (!accept(f)) continue;
-        found.push({
-          id: f.id,
-          name: f.name,
-          mimeType: f.mimeType,
-          folder: folder.name,
-          modifiedTime: f.modifiedTime,
-          readable: f.mimeType === PDF,
-          size: Number(f.size) || 0,
-        });
-      }
-    });
+      });
+    }
     level = next;
   }
 
@@ -151,7 +154,7 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
 
 /** RePass만 사용하는 읽기 전용 PDF 목록. 정답지와 문제지를 함께 돌려줍니다. */
 export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<DriveFile[]> {
-  return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), 2000);
+  return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS);
 }
 
 /** 파일 하나를 통째로 내려받습니다. */
