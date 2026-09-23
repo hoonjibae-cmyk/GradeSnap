@@ -68,12 +68,13 @@ async function api(cfg: DriveConfig, path: string): Promise<Response> {
 }
 
 /** 폴더 하나의 바로 아래 것들. 페이지가 나뉘어 오면 이어 받습니다. */
-async function childrenOf(cfg: DriveConfig, folderId: string): Promise<RawFile[]> {
+async function childrenOf(cfg: DriveConfig, folderId: string, modifiedAfter?: string): Promise<RawFile[]> {
   const out: RawFile[] = [];
   let pageToken = "";
   do {
     const q = new URLSearchParams({
-      q: `'${folderId}' in parents and trashed = false`,
+      // Keep traversing old folders: a teacher may upload a new PDF inside one.
+      q: `'${folderId}' in parents and trashed = false${modifiedAfter ? ` and (mimeType = '${FOLDER_MIME}' or (mimeType = '${PDF}' and modifiedTime > '${modifiedAfter}'))` : ""}`,
       fields: "nextPageToken, files(id, name, mimeType, modifiedTime, size)",
       pageSize: "1000",
       // 공유 드라이브에 있을 수도 있습니다. 없으면 무시되는 값입니다.
@@ -95,7 +96,7 @@ async function childrenOf(cfg: DriveConfig, folderId: string): Promise<RawFile[]
  * 최근에 고친 것부터 돌려줍니다 — 오늘 재시험 정답지를 찾는 사람이
  * 지난달 것을 헤집지 않게.
  */
-async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number, maxFolders = MAX_FOLDERS, maxDepth = MAX_DEPTH): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
+async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number, maxFolders = MAX_FOLDERS, maxDepth = MAX_DEPTH, modifiedAfter?: string): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
   const c = cfg ?? driveConfig();
   if (!c) throw new Error("구글 폴더가 아직 연결돼 있지 않습니다. (docs/17 참고)");
 
@@ -124,7 +125,7 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
     const next: { id: string; name: string }[] = [];
     for (let start = 0; start < batch.length; start += 20) {
       const part = batch.slice(start, start + 20);
-      const kidsPerFolder = await Promise.all(part.map((f) => childrenOf(c, f.id)));
+      const kidsPerFolder = await Promise.all(part.map((f) => childrenOf(c, f.id, modifiedAfter)));
       part.forEach((folder, i) => {
         for (const f of kidsPerFolder[i]) {
           if (f.mimeType === FOLDER_MIME) {
@@ -132,7 +133,7 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
             next.push({ id: f.id, name: [folder.name, f.name].filter(Boolean).join("/") });
             continue;
           }
-          if (!accept(f)) continue;
+          if (!accept(f) || (modifiedAfter && f.modifiedTime <= modifiedAfter)) continue;
           found.push({
             id: f.id,
             name: f.name,
@@ -157,8 +158,19 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
 }
 
 /** RePass만 사용하는 읽기 전용 PDF 목록. 정답지와 문제지를 함께 돌려줍니다. */
-export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
-  return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS, MAX_RETEST_FOLDERS, MAX_RETEST_DEPTH);
+export function retestCutoff(now = new Date()): string {
+  const cutoff = new Date(now);
+  const date = cutoff.getUTCDate();
+  cutoff.setUTCDate(1);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - 2);
+  const lastDate = new Date(Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth() + 1, 0)).getUTCDate();
+  cutoff.setUTCDate(Math.min(date, lastDate));
+  return cutoff.toISOString();
+}
+
+export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number; since: string }> {
+  const since = retestCutoff();
+  return { ...await listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS, MAX_RETEST_FOLDERS, MAX_RETEST_DEPTH, since), since };
 }
 
 /** 파일 하나를 통째로 내려받습니다. */
@@ -168,3 +180,4 @@ export async function downloadFile(id: string, cfg?: DriveConfig | null): Promis
   const res = await api(c, `${API}/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`);
   return new Uint8Array(await res.arrayBuffer());
 }
+
