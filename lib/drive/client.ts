@@ -93,7 +93,7 @@ async function childrenOf(cfg: DriveConfig, folderId: string): Promise<RawFile[]
  * 최근에 고친 것부터 돌려줍니다 — 오늘 재시험 정답지를 찾는 사람이
  * 지난달 것을 헤집지 않게.
  */
-async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number): Promise<DriveFile[]> {
+async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
   const c = cfg ?? driveConfig();
   if (!c) throw new Error("구글 폴더가 아직 연결돼 있지 않습니다. (docs/17 참고)");
 
@@ -145,15 +145,15 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
   }
 
   found.sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime));
-  return found.slice(0, limit);
+  return { files: found.slice(0, limit), truncated: Boolean(level.length) || found.length > limit, visitedFolders: visited };
 }
 
 export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<DriveFile[]> {
-  return listFiles(cfg, (file) => isAnswerKeyName(file.name), MAX_FILES);
+  return (await listFiles(cfg, (file) => isAnswerKeyName(file.name), MAX_FILES)).files;
 }
 
 /** RePass만 사용하는 읽기 전용 PDF 목록. 정답지와 문제지를 함께 돌려줍니다. */
-export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<DriveFile[]> {
+export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
   return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS);
 }
 

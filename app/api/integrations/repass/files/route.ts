@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { driveConfig } from "@/lib/drive/auth";
-import { downloadFile, listRetestPdfs, MAX_RETEST_PDFS } from "@/lib/drive/client";
+import { downloadFile, listRetestPdfs } from "@/lib/drive/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -18,8 +18,8 @@ export async function GET(req: Request) {
   try {
     const fileId = new URL(req.url).searchParams.get("fileId");
     if (!fileId) {
-      const files = await listRetestPdfs(config);
-      return NextResponse.json({ files, truncated: files.length === MAX_RETEST_PDFS }, { headers: { "Cache-Control": "private, no-store" } });
+      const listing = await listRetestPdfs(config);
+      return NextResponse.json(listing, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (!/^[\w-]{10,200}$/.test(fileId)) return NextResponse.json({ error: "파일 ID가 올바르지 않습니다." }, { status: 400 });
     const bytes = await downloadFile(fileId, config);
