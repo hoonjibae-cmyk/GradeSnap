@@ -37,6 +37,7 @@ export interface DriveFile {
   modifiedTime: string;
   /** PDF가 아니면 글자를 못 뽑습니다. 목록에는 두되 그렇게 표시합니다. */
   readable: boolean;
+  size?: number;
 }
 
 interface RawFile {
@@ -44,6 +45,7 @@ interface RawFile {
   name: string;
   mimeType: string;
   modifiedTime: string;
+  size?: string;
 }
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -69,7 +71,7 @@ async function childrenOf(cfg: DriveConfig, folderId: string): Promise<RawFile[]
   do {
     const q = new URLSearchParams({
       q: `'${folderId}' in parents and trashed = false`,
-      fields: "nextPageToken, files(id, name, mimeType, modifiedTime)",
+      fields: "nextPageToken, files(id, name, mimeType, modifiedTime, size)",
       pageSize: "1000",
       // 공유 드라이브에 있을 수도 있습니다. 없으면 무시되는 값입니다.
       supportsAllDrives: "true",
@@ -90,7 +92,7 @@ async function childrenOf(cfg: DriveConfig, folderId: string): Promise<RawFile[]
  * 최근에 고친 것부터 돌려줍니다 — 오늘 재시험 정답지를 찾는 사람이
  * 지난달 것을 헤집지 않게.
  */
-export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<DriveFile[]> {
+async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number): Promise<DriveFile[]> {
   const c = cfg ?? driveConfig();
   if (!c) throw new Error("구글 폴더가 아직 연결돼 있지 않습니다. (docs/17 참고)");
 
@@ -124,7 +126,7 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
           next.push({ id: f.id, name: folder.name || f.name });
           continue;
         }
-        if (!isAnswerKeyName(f.name)) continue;
+        if (!accept(f)) continue;
         found.push({
           id: f.id,
           name: f.name,
@@ -132,6 +134,7 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
           folder: folder.name,
           modifiedTime: f.modifiedTime,
           readable: f.mimeType === PDF,
+          size: Number(f.size) || 0,
         });
       }
     });
@@ -139,7 +142,16 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
   }
 
   found.sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime));
-  return found.slice(0, MAX_FILES);
+  return found.slice(0, limit);
+}
+
+export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<DriveFile[]> {
+  return listFiles(cfg, (file) => isAnswerKeyName(file.name), MAX_FILES);
+}
+
+/** RePass만 사용하는 읽기 전용 PDF 목록. 정답지와 문제지를 함께 돌려줍니다. */
+export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<DriveFile[]> {
+  return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), 2000);
 }
 
 /** 파일 하나를 통째로 내려받습니다. */
