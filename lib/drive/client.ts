@@ -99,11 +99,13 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
 
   const found: DriveFile[] = [];
   let visited = 0;
+  let skippedFolders = false;
   // 너비 우선 — 얕은 곳(선생님 폴더 바로 아래)이 먼저 채워집니다.
   let level: { id: string; name: string }[] = [{ id: c.folderId, name: "" }];
 
   for (let depth = 0; depth < MAX_DEPTH && level.length && visited < MAX_FOLDERS; depth++) {
     const batch = level.slice(0, Math.max(0, MAX_FOLDERS - visited));
+    if (batch.length < level.length) skippedFolders = true;
     visited += batch.length;
 
     /*
@@ -145,7 +147,7 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
   }
 
   found.sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime));
-  return { files: found.slice(0, limit), truncated: Boolean(level.length) || found.length > limit, visitedFolders: visited };
+  return { files: found.slice(0, limit), truncated: skippedFolders || Boolean(level.length) || found.length > limit, visitedFolders: visited };
 }
 
 export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<DriveFile[]> {
