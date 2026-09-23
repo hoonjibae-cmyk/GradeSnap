@@ -21,13 +21,15 @@ import { isAnswerKeyName, PDF } from "./names";
 
 const API = "https://www.googleapis.com/drive/v3/files";
 
-/** 몇 겹까지 들어갈 것인가. 지금 구조는 2겹이라 넉넉합니다. */
-const MAX_DEPTH = 6;
-/** 훑을 폴더 수의 뚜껑. 선생님 수의 몇 배입니다. */
-const MAX_FOLDERS = 500;
+/** GradeSnap 채점 화면은 최근 정답지에 집중합니다. */
+const MAX_DEPTH = 4;
+const MAX_FOLDERS = 200;
+/** RePass는 선생님별 전체 PDF 목록을 가져오므로 보관 폴더까지 탐색합니다. */
+const MAX_RETEST_DEPTH = 10;
+const MAX_RETEST_FOLDERS = 2500;
 /** 화면에 내놓을 정답지 수. 최근 것부터입니다. */
 export const MAX_FILES = 200;
-export const MAX_RETEST_PDFS = 10000;
+export const MAX_RETEST_PDFS = 30000;
 
 export interface DriveFile {
   id: string;
@@ -93,7 +95,7 @@ async function childrenOf(cfg: DriveConfig, folderId: string): Promise<RawFile[]
  * 최근에 고친 것부터 돌려줍니다 — 오늘 재시험 정답지를 찾는 사람이
  * 지난달 것을 헤집지 않게.
  */
-async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
+async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: RawFile) => boolean, limit: number, maxFolders = MAX_FOLDERS, maxDepth = MAX_DEPTH): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
   const c = cfg ?? driveConfig();
   if (!c) throw new Error("구글 폴더가 아직 연결돼 있지 않습니다. (docs/17 참고)");
 
@@ -103,8 +105,8 @@ async function listFiles(cfg: DriveConfig | null | undefined, accept: (file: Raw
   // 너비 우선 — 얕은 곳(선생님 폴더 바로 아래)이 먼저 채워집니다.
   let level: { id: string; name: string }[] = [{ id: c.folderId, name: "" }];
 
-  for (let depth = 0; depth < MAX_DEPTH && level.length && visited < MAX_FOLDERS; depth++) {
-    const batch = level.slice(0, Math.max(0, MAX_FOLDERS - visited));
+  for (let depth = 0; depth < maxDepth && level.length && visited < maxFolders; depth++) {
+    const batch = level.slice(0, Math.max(0, maxFolders - visited));
     if (batch.length < level.length) skippedFolders = true;
     visited += batch.length;
 
@@ -156,7 +158,7 @@ export async function listAnswerKeyFiles(cfg?: DriveConfig | null): Promise<Driv
 
 /** RePass만 사용하는 읽기 전용 PDF 목록. 정답지와 문제지를 함께 돌려줍니다. */
 export async function listRetestPdfs(cfg?: DriveConfig | null): Promise<{ files: DriveFile[]; truncated: boolean; visitedFolders: number }> {
-  return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS);
+  return listFiles(cfg, (file) => file.mimeType === PDF && !/오답\s*노트/u.test(file.name), MAX_RETEST_PDFS, MAX_RETEST_FOLDERS, MAX_RETEST_DEPTH);
 }
 
 /** 파일 하나를 통째로 내려받습니다. */
